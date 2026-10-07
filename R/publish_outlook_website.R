@@ -82,6 +82,13 @@ main_html <- file.path(
 if (!file.exists(main_html)) {
   stop("Current main NHS Outlook HTML was not found: ", main_html, ".")
 }
+main_latest_alias <- file.path(
+  html_source_dir, "nhs-performance-outlook-latest.html"
+)
+if (!file.exists(main_latest_alias)) {
+  stop("Current main NHS Outlook latest alias was not found: ",
+       main_latest_alias, ".")
+}
 
 dir.create(site_dir, recursive = TRUE, showWarnings = FALSE)
 forecast_asset_dir <- file.path(site_dir, "forecasts")
@@ -91,7 +98,9 @@ if (dir.exists(forecast_asset_dir)) {
 pdf_site_dir <- file.path(forecast_asset_dir, issue_day)
 dir.create(pdf_site_dir, recursive = TRUE, showWarnings = FALSE)
 
-html_to_copy <- unique(c(main_html, detail_tbl$source_file))
+html_to_copy <- unique(c(
+  main_html, main_latest_alias, detail_tbl$source_file
+))
 copied_html <- file.copy(
   html_to_copy,
   file.path(site_dir, basename(html_to_copy)),
@@ -195,9 +204,61 @@ if (any(!website_manifest$exists)) {
   stop("Website manifest contains one or more missing files.")
 }
 
+# GitHub Pages for this repository is configured to serve the root of the main
+# branch. Keep publication_site as the canonical assembled website, then mirror
+# only its current public artifacts into the repository root. This avoids a
+# second hand-maintained publishing script and makes one pipeline run sufficient
+# before the normal git commit and push.
+root_html_sources <- unique(c(
+  index_file,
+  file.path(site_dir, basename(html_to_copy))
+))
+root_support_sources <- c(
+  file.path(site_dir, ".nojekyll"),
+  file.path(site_dir, "website_manifest.csv")
+)
+root_file_sources <- c(root_html_sources, root_support_sources)
+root_file_destinations <- file.path(
+  project_root, basename(root_file_sources)
+)
+root_copied <- file.copy(
+  root_file_sources, root_file_destinations, overwrite = TRUE
+)
+if (!all(root_copied)) {
+  stop("One or more current website files could not be mirrored to the repository root.")
+}
+
+root_pdf_dir <- file.path(project_root, "forecasts", issue_day)
+dir.create(root_pdf_dir, recursive = TRUE, showWarnings = FALSE)
+root_pdf_destinations <- file.path(root_pdf_dir, basename(pdf_sources))
+root_pdf_copied <- file.copy(
+  file.path(pdf_site_dir, basename(pdf_sources)),
+  root_pdf_destinations,
+  overwrite = TRUE
+)
+if (!all(root_pdf_copied)) {
+  stop("One or more current PDFs could not be mirrored to the repository root.")
+}
+
+copied_sources <- c(
+  root_file_sources,
+  file.path(pdf_site_dir, basename(pdf_sources))
+)
+copied_destinations <- c(
+  root_file_destinations,
+  root_pdf_destinations
+)
+copy_matches <- unname(tools::md5sum(copied_sources)) ==
+  unname(tools::md5sum(copied_destinations))
+if (anyNA(copy_matches) || !all(copy_matches)) {
+  stop("Repository-root website mirror failed its byte-for-byte verification.")
+}
+
 message(
   "NHS Outlook website built at ", index_file, " with eight detailed HTML ",
-  "links and ", length(pdf_sources), " PDF(s) under forecasts/", issue_day, "/."
+  "links and ", length(pdf_sources), " PDF(s) under forecasts/", issue_day,
+  "/. Current public artifacts were also verified in the repository root for ",
+  "GitHub Pages."
 )
 if (isTRUE(getOption("nhs.outlook.open_website", interactive()))) {
   utils::browseURL(normalizePath(index_file, winslash = "/"))
