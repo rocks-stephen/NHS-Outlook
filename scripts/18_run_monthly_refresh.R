@@ -29,12 +29,15 @@ if (length(missing_scripts)) {
 source("R/utils.R")
 publication_mode <- nhs_outlook_publication_mode()
 publication_issue_date <- nhs_outlook_issue_date()
+publication_status <- nhs_outlook_publication_status()
 options(
   nhs.outlook.publication_mode = publication_mode,
-  nhs.outlook.issue_date = as.Date(publication_issue_date)
+  nhs.outlook.issue_date = as.Date(publication_issue_date),
+  nhs.outlook.publication_status = publication_status
 )
 message(
   "Publication mode: ", publication_mode,
+  "; status: ", publication_status,
   "; issue date: ", format(as.Date(publication_issue_date), "%Y-%m-%d"), "."
 )
 
@@ -74,5 +77,6 @@ message(
 )
 options(
   nhs.outlook.publication_mode = NULL,
-  nhs.outlook.issue_date = NULL
+  nhs.outlook.issue_date = NULL,
+  nhs.outlook.publication_status = NULL
 )

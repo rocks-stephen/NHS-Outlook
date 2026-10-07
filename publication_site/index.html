@@ -3,153 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NHS Outlook · Forecast edition</title>
+  <title>NHS Outlook · Pilot · Forecast edition</title>
   <style>
     :root{--ink:#17252f;--muted:#63707a;--line:#d9e0e3;--paper:#fff;--wash:#f4f7f6;--brand:#173f36;--brand-2:#2d6657;--forecast:#e9f1ee;--good:#276452;--bad:#9a3d46}
     *{box-sizing:border-box}html,body{margin:0}body{background:#edf1f0;color:var(--ink);font:13px/1.36 Arial,Helvetica,sans-serif}.page{width:min(794px,calc(100% - 28px));min-height:1123px;margin:24px auto;background:var(--paper);box-shadow:0 14px 38px rgba(20,44,38,.12)}
-    header{padding:25px 32px 20px;border-top:10px solid var(--brand)}.masthead{display:flex;justify-content:space-between;align-items:center;color:var(--brand);font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}.edition{padding:4px 7px;border:1px solid #9cb2ab;letter-spacing:.08em}h1{margin:18px 0 2px;font:700 38px/1.02 Georgia,"Times New Roman",serif;letter-spacing:-.035em}.subtitle{margin:0;color:var(--muted);font-size:12px}.rule{height:1px;margin-top:20px;background:var(--ink)}
+    header{padding:25px 32px 20px;border-top:10px solid var(--brand)}.masthead{display:flex;justify-content:space-between;align-items:center;color:var(--brand);font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}.edition{padding:4px 7px;border:1px solid #9cb2ab;letter-spacing:.08em}.edition.pilot{color:#a12632;border-color:#c98288;background:#fff6f6}h1{margin:18px 0 2px;font:700 38px/1.02 Georgia,"Times New Roman",serif;letter-spacing:-.035em}.subtitle{margin:0;color:var(--muted);font-size:12px}.rule{height:1px;margin-top:20px;background:var(--ink)}
     main{padding:0 32px 16px}.intro{display:grid;grid-template-columns:1fr 150px;gap:26px;padding:16px 0 17px}.summary{margin:0;font:600 16px/1.45 Georgia,"Times New Roman",serif}.meta{text-align:right;color:var(--muted);font-size:9px}.meta strong{display:block;color:var(--ink);font-size:11px}.coverage{margin-top:5px}
-    table{width:100%;border-collapse:collapse;table-layout:fixed;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink)}col.metric{width:35%}col.number{width:21.666%}thead th{padding:8px 9px;border-bottom:1px solid var(--ink);color:var(--muted);font-size:9px;font-weight:800;letter-spacing:.09em;text-align:left;text-transform:uppercase}tbody th,tbody td{padding:9px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}.group-row th{padding:7px 9px 5px;border-bottom:1px solid var(--ink);background:var(--wash);color:var(--brand-2);font-size:8px;letter-spacing:.12em;text-transform:uppercase}.metric-row th{background:#fbfcfc}.metric-name{display:block;color:var(--ink);font-size:12px;font-weight:800;text-decoration:none}.metric-name:hover{text-decoration:underline}.metric-benchmark,.metric-signal{display:block;margin-top:3px;color:var(--muted);font-size:8px;font-weight:400}.metric-signal{color:var(--brand-2)}.cell-value{display:block;font-size:20px;font-weight:800;line-height:1.05;letter-spacing:-.02em}.forecast-cell{background:var(--forecast)}.forecast-cell .cell-value{color:var(--brand)}.actual-value{color:var(--ink)}.pending{color:#a2abb0}.cell-date{display:block;margin-top:3px;color:#46545d;font-size:8px;font-weight:700}.cell-note{display:block;margin-top:4px;color:var(--muted);font-size:7px;line-height:1.3}
+    table{width:100%;border-collapse:collapse;table-layout:fixed;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink)}col.metric{width:32%}col.number{width:20%}col.detail{width:8%}thead th{padding:8px 9px;border-bottom:1px solid var(--ink);color:var(--muted);font-size:9px;font-weight:800;letter-spacing:.09em;text-align:left;text-transform:uppercase}tbody th,tbody td{padding:9px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}.group-row th{padding:7px 9px 5px;border-bottom:1px solid var(--ink);background:var(--wash);color:var(--brand-2);font-size:8px;letter-spacing:.12em;text-transform:uppercase}.metric-row th{background:#fbfcfc}.metric-name{display:block;color:var(--ink);font-size:12px;font-weight:800;text-decoration:none}.metric-name:hover{text-decoration:underline}.metric-benchmark,.metric-signal{display:block;margin-top:3px;color:var(--muted);font-size:8px;font-weight:400}.metric-signal{color:var(--brand-2)}.cell-value{display:block;font-size:20px;font-weight:800;line-height:1.05;letter-spacing:-.02em}.forecast-cell{background:var(--forecast)}.forecast-cell .cell-value{color:var(--brand)}.actual-value{color:var(--ink)}.pending{color:#a2abb0}.cell-date{display:block;margin-top:3px;color:#46545d;font-size:8px;font-weight:700}.cell-note{display:block;margin-top:4px;color:var(--muted);font-size:7px;line-height:1.3}.detail-head,.detail-cell{text-align:center}.detail-cell a{display:inline-block;color:var(--brand-2);font-size:8px;font-weight:800;text-decoration:none;white-space:nowrap}.detail-cell a:hover{text-decoration:underline}
     .method{display:grid;grid-template-columns:1.1fr .9fr;gap:24px;padding-top:13px;color:var(--muted);font-size:8px}.method p{margin:0}.method strong{color:var(--ink)}.sources{line-height:1.45}.sources a{color:var(--brand-2);text-decoration:none}.sources a:hover{text-decoration:underline}
     footer{display:flex;justify-content:space-between;gap:18px;margin:0 32px;padding:10px 0 18px;border-top:1px solid var(--line);color:var(--muted);font-size:7px}.brand-footer{color:var(--brand);font-weight:800;letter-spacing:.1em}
     @media(max-width:680px){.page{width:100%;min-height:0;margin:0;box-shadow:none}header,main{padding-left:18px;padding-right:18px}.intro{grid-template-columns:1fr}.meta{text-align:left}footer{margin-left:18px;margin-right:18px;flex-direction:column}table{font-size:11px}.metric-signal{display:none}}
-    @media print{@page{size:A4 portrait;margin:0}html,body{width:210mm;height:297mm;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{width:210mm;height:297mm;min-height:297mm;margin:0;box-shadow:none;overflow:hidden}header{padding:6mm 9mm 4mm;border-top-width:3mm}.masthead{font-size:6.5pt}h1{margin-top:5mm;font-size:27pt}.subtitle{font-size:8pt}.rule{margin-top:4mm}main{padding:0 9mm 2mm}.intro{grid-template-columns:1fr 38mm;gap:6mm;padding:3.5mm 0}.summary{font-size:10.5pt}.meta{font-size:5.5pt}.meta strong{font-size:7pt}thead th{padding:1.3mm 1.6mm;font-size:5.5pt}tbody th,tbody td{padding:1.65mm 1.6mm}.group-row th{padding:1.1mm 1.6mm .8mm;font-size:5pt}.metric-name{font-size:7.2pt}.metric-benchmark,.metric-signal{margin-top:.5mm;font-size:4.7pt}.cell-value{font-size:12.5pt}.cell-date{margin-top:.5mm;font-size:4.8pt}.cell-note{margin-top:.7mm;font-size:4.4pt}.method{gap:5mm;padding-top:2mm;font-size:4.7pt}footer{margin:0 9mm;padding:2mm 0 3mm;font-size:4.2pt}header,.intro,table,.method,footer,tr{break-inside:avoid}}
+    @media print{@page{size:A4 portrait;margin:0}html,body{width:210mm;height:297mm;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{width:210mm;height:297mm;min-height:297mm;margin:0;box-shadow:none;overflow:hidden}header{padding:6mm 9mm 4mm;border-top-width:3mm}.masthead{font-size:6.5pt}h1{margin-top:5mm;font-size:27pt}.subtitle{font-size:8pt}.rule{margin-top:4mm}main{padding:0 9mm 2mm}.intro{grid-template-columns:1fr 38mm;gap:6mm;padding:3.5mm 0}.summary{font-size:10.5pt}.meta{font-size:5.5pt}.meta strong{font-size:7pt}col.metric{width:35%}col.number{width:21.666%}col.detail,.detail-head,.detail-cell{display:none!important}thead th{padding:1.3mm 1.6mm;font-size:5.5pt}tbody th,tbody td{padding:1.65mm 1.6mm}.group-row th{padding:1.1mm 1.6mm .8mm;font-size:5pt}.metric-name{font-size:7.2pt}.metric-benchmark,.metric-signal{margin-top:.5mm;font-size:4.7pt}.cell-value{font-size:12.5pt}.cell-date{margin-top:.5mm;font-size:4.8pt}.cell-note{margin-top:.7mm;font-size:4.4pt}.method{gap:5mm;padding-top:2mm;font-size:4.7pt}footer{margin:0 9mm;padding:2mm 0 3mm;font-size:4.2pt}header,.intro,table,.method,footer,tr{break-inside:avoid}}
   
-    .outlook-actions{
-      display:flex;
-      gap:10px;
-      align-items:center;
-      margin:13px 0 2px;
-      flex-wrap:wrap
-    }
-
-    .button-link{
-      display:inline-block;
-      padding:8px 12px;
-      border:1px solid var(--brand);
-      border-radius:3px;
-      color:var(--brand);
-      text-decoration:none;
-      font-size:9px;
-      font-weight:800;
-      letter-spacing:.04em
-    }
-
-    .button-link.primary{
-      background:var(--brand);
-      color:#fff
-    }
-
-    .details-page{
-      width:min(794px,calc(100% - 28px));
-      margin:24px auto 48px;
-      background:var(--paper);
-      box-shadow:0 14px 38px rgba(20,44,38,.12);
-      padding:30px 32px 34px
-    }
-
-    .details-kicker{
-      color:var(--brand-2);
-      font-size:9px;
-      font-weight:800;
-      letter-spacing:.14em;
-      text-transform:uppercase
-    }
-
-    .details-page h2{
-      margin:8px 0 5px;
-      font:700 30px/1.05 Georgia,"Times New Roman",serif;
-      letter-spacing:-.025em
-    }
-
-    .details-intro{
-      max-width:620px;
-      margin:0 0 22px;
-      color:var(--muted);
-      font-size:11px
-    }
-
-    .detail-group{
-      margin-top:22px
-    }
-
-    .detail-group h3{
-      margin:0 0 7px;
-      padding-bottom:6px;
-      border-bottom:1px solid var(--ink);
-      color:var(--brand-2);
-      font-size:8px;
-      font-weight:800;
-      letter-spacing:.12em;
-      text-transform:uppercase
-    }
-
-    .detail-list{
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:0 20px
-    }
-
-    .detail-item{
-      display:flex;
-      justify-content:space-between;
-      gap:18px;
-      align-items:center;
-      padding:10px 0;
-      border-bottom:1px solid var(--line)
-    }
-
-    .detail-name{
-      color:var(--ink);
-      font-size:11px;
-      font-weight:800
-    }
-
-    .detail-link{
-      white-space:nowrap;
-      color:var(--brand-2);
-      font-size:9px;
-      font-weight:800;
-      text-decoration:none
-    }
-
-    .detail-link:hover{
-      text-decoration:underline
-    }
-
-    .details-note{
-      margin-top:22px;
-      color:var(--muted);
-      font-size:8px;
-      line-height:1.45
-    }
-
-    @media(max-width:680px){
-      .details-page{
-        width:100%;
-        margin:18px 0 0;
-        box-shadow:none;
-        padding:24px 18px 30px
-      }
-
-      .detail-list{
-        grid-template-columns:1fr
-      }
-    }
-
-    @media print{
-      .outlook-actions,
-      .details-page{
-        display:none !important
-      }
-    }
-
-  </style>
+    .outlook-actions{display:flex;gap:10px;align-items:center;margin:13px 0 2px;flex-wrap:wrap}.button-link{display:inline-block;padding:8px 12px;border:1px solid var(--brand);border-radius:3px;color:var(--brand);text-decoration:none;font-size:9px;font-weight:800;letter-spacing:.04em}.button-link.primary{background:var(--brand);color:#fff}@media print{.outlook-actions{display:none!important}}
+</style>
 </head>
 <body>
   <article class="page">
     <header>
-      <div class="masthead"><span>ROCKS / HEALTH</span><span class="edition">Pilot · Forecast edition</span></div>
+      <div class="masthead"><span>ROCKS / HEALTH</span><span class="edition pilot">Pilot · Forecast edition</span></div>
       <h1>NHS OUTLOOK</h1>
       <p class="subtitle">What the next monthly releases are expected to show</p>
       <div class="rule"></div>
@@ -160,53 +32,17 @@
         <div class="meta"><strong>07 October 2026</strong><span>8 indicators</span><div class="coverage">Release months differ by measure; each row is dated.</div></div>
       </section>
       <table>
-        <colgroup><col class="metric"><col class="number"><col class="number"><col class="number"></colgroup>
-        <thead><tr><th>Indicator</th><th>Latest</th><th>Outlook</th><th>Actual</th></tr></thead>
-        <tbody><tr class="group-row"><th colspan="4">Urgent care</th></tr><tr class="metric-row"><th scope="row"><a class="metric-name" href="ae-four-hour-outlook-latest.html">A&amp;E four-hour performance</a><span class="metric-benchmark">95% constitutional standard</span><span class="metric-signal">12 favourable · 22 adverse provider signals</span></th><td><span class="cell-value">75.0%</span><span class="cell-date">Aug 2026</span><span class="cell-note">Baseline when outlook was made</span></td><td class="forecast-cell"><span class="cell-value">75.9%</span><span class="cell-date">Sep 2026 · Improvement expected</span><span class="cell-note">80% range 74.0%–77.7%</span></td><td><span class="cell-value pending">—</span><span class="cell-date">Not yet released</span><span class="cell-note">Added in the outturn edition</span></td></tr><tr class="metric-row"><th scope="row"><a class="metric-name" href="ambulance-category-2-outlook-latest.html">Category 2 ambulance response</a><span class="metric-benchmark">18-minute standard</span><span class="metric-signal">0 favourable · 2 adverse provider signals</span></th><td><span class="cell-value">28.9 min</span><span class="cell-date">Aug 2026</span><span class="cell-note">Baseline when outlook was made</span></td><td class="forecast-cell"><span class="cell-value">30.9 min</span><span class="cell-date">Sep 2026 · Deterioration expected</span><span class="cell-note">80% range 24.2 min–36.1 min</span></td><td><span class="cell-value pending">—</span><span class="cell-date">Not yet released</span><span class="cell-note">Added in the outturn edition</span></td></tr><tr class="group-row"><th colspan="4">Planned care</th></tr><tr class="metric-row"><th scope="row"><a class="metric-name" href="rtt-18-week-outlook-latest.html">RTT within 18 weeks</a><span class="metric-benchmark">92% constitutional standard</span><span class="metric-signal">50 favourable · 6 adverse provider signals</span></th><td><span class="cell-value">65.4%</span><span class="cell-date">Jul 2026</span><span class="cell-note">Baseline when outlook was made</span></td><td class="forecast-cell"><span class="cell-value">64.7%</span><span class="cell-date">Aug 2026 · Deterioration expected</span><span class="cell-note">80% range 64.7%–66.7%</span></td><td><span class="cell-value pending">—</span><span class="cell-date">Not yet released</span><span class="cell-note">Added in the outturn edition</span></td></tr><tr class="metric-row"><th scope="row"><a class="metric-name" href="diagnostics-six-week-outlook-latest.html">Diagnostics waiting over six weeks</a><span class="metric-benchmark">1% operational standard</span><span class="metric-signal">35 favourable · 30 adverse provider signals</span></th><td><span class="cell-value">23.1%</span><span class="cell-date">Jul 2026</span><span class="cell-note">Baseline when outlook was made</span></td><td class="forecast-cell"><span class="cell-value">25.2%</span><span class="cell-date">Aug 2026 · Deterioration expected</span><span class="cell-note">80% range 22.7%–27.2%</span></td><td><span class="cell-value pending">—</span><span class="cell-date">Not yet released</span><span class="cell-note">Added in the outturn edition</span></td></tr><tr class="metric-row"><th scope="row"><a class="metric-name" href="cancer-62-day-outlook-latest.html">Cancer treatment within 62 days</a><span class="metric-benchmark">85% constitutional standard</span><span class="metric-signal">22 favourable · 9 adverse provider signals</span></th><td><span class="cell-value">71.2%</span><span class="cell-date">Jul 2026</span><span class="cell-note">Baseline when outlook was made</span></td><td class="forecast-cell"><span class="cell-value">70.7%</span><span class="cell-date">Aug 2026 · Broadly stable</span><span class="cell-note">80% range 68.9%–72.3%</span></td><td><span class="cell-value pending">—</span><span class="cell-date">Not yet released</span><span class="cell-note">Added in the outturn edition</span></td></tr><tr class="group-row"><th colspan="4">Community</th></tr><tr class="metric-row"><th scope="row"><a class="metric-name" href="urgent-community-response-outlook-latest.html">Two-hour urgent community response</a><span class="metric-benchmark">70% national standard</span><span class="metric-signal">Provider trajectory watch not available</span></th><td><span class="cell-value">85.3%</span><span class="cell-date">Jul 2026</span><span class="cell-note">Baseline when outlook was made</span></td><td class="forecast-cell"><span class="cell-value">86.1%</span><span class="cell-date">Aug 2026 · Improvement expected</span><span class="cell-note">80% range 85.6%–86.9%</span></td><td><span class="cell-value pending">—</span><span class="cell-date">Not yet released</span><span class="cell-note">Added in the outturn edition</span></td></tr><tr class="metric-row"><th scope="row"><a class="metric-name" href="community-18-week-outlook-latest.html">Community waiting list within 18 weeks</a><span class="metric-benchmark">80% by March 2029</span><span class="metric-signal">Provider trajectory watch not available</span></th><td><span class="cell-value">75.9%</span><span class="cell-date">Jul 2026</span><span class="cell-note">Baseline when outlook was made</span></td><td class="forecast-cell"><span class="cell-value">75.3%</span><span class="cell-date">Aug 2026 · Deterioration expected</span><span class="cell-note">80% range 74.2%–76.3%</span></td><td><span class="cell-value pending">—</span><span class="cell-date">Not yet released</span><span class="cell-note">Added in the outturn edition</span></td></tr><tr class="group-row"><th colspan="4">Mental health</th></tr><tr class="metric-row"><th scope="row"><a class="metric-name" href="talking-therapies-six-week-outlook-latest.html">Talking Therapies within six weeks</a><span class="metric-benchmark">75% national standard</span><span class="metric-signal">Provider trajectory watch not available</span></th><td><span class="cell-value">83.8%</span><span class="cell-date">Jul 2026</span><span class="cell-note">Baseline when outlook was made</span></td><td class="forecast-cell"><span class="cell-value">85.2%</span><span class="cell-date">Aug 2026 · Improvement expected</span><span class="cell-note">80% range 83.4%–86.7%</span></td><td><span class="cell-value pending">—</span><span class="cell-date">Not yet released</span><span class="cell-note">Added in the outturn edition</span></td></tr></tbody>
+        <colgroup><col class="metric"><col class="number"><col class="number"><col class="number"><col class="detail"></colgroup>
+        <thead><tr><th>Indicator</th><th>Latest</th><th>Outlook</th><th>Actual</th><th class="detail-head">Detail</th></tr></thead>
+        <tbody><tr class="group-row"><th colspan="5">Urgent care</th></tr><tr class="metric-row"><th scope="row"><a class="metric-name" href="ae-four-hour-outlook-latest.html">A&amp;E four-hour performance</a><span class="metric-benchmark">95% constitutional standard</span><span class="metric-signal">12 favourable · 22 adverse provider signals</span></th><td><span class="cell-value">75.0%</span><span class="cell-date">Aug 2026</span><span class="cell-note">Baseline when outlook was made</span></td><td class="forecast-cell"><span class="cell-value">75.9%</span><span class="cell-date">Sep 2026 · Improvement expected</span><span class="cell-note">80% range 74.0%–77.7%</span></td><td><span class="cell-value pending">—</span><span class="cell-date">Not yet released</span><span class="cell-note">Added in the outturn edition</span></td><td class="detail-cell"><a href="ae-four-hour-outlook-latest.html">View →</a></td></tr><tr class="metric-row"><th scope="row"><a class="metric-name" href="ambulance-category-2-outlook-latest.html">Category 2 ambulance response</a><span class="metric-benchmark">18-minute standard</span><span class="metric-signal">0 favourable · 2 adverse provider signals</span></th><td><span class="cell-value">28.9 min</span><span class="cell-date">Aug 2026</span><span class="cell-note">Baseline when outlook was made</span></td><td class="forecast-cell"><span class="cell-value">30.9 min</span><span class="cell-date">Sep 2026 · Deterioration expected</span><span class="cell-note">80% range 24.2 min–36.1 min</span></td><td><span class="cell-value pending">—</span><span class="cell-date">Not yet released</span><span class="cell-note">Added in the outturn edition</span></td><td class="detail-cell"><a href="ambulance-category-2-outlook-latest.html">View →</a></td></tr><tr class="group-row"><th colspan="5">Planned care</th></tr><tr class="metric-row"><th scope="row"><a class="metric-name" href="rtt-18-week-outlook-latest.html">RTT within 18 weeks</a><span class="metric-benchmark">92% constitutional standard</span><span class="metric-signal">50 favourable · 6 adverse provider signals</span></th><td><span class="cell-value">65.4%</span><span class="cell-date">Jul 2026</span><span class="cell-note">Baseline when outlook was made</span></td><td class="forecast-cell"><span class="cell-value">64.7%</span><span class="cell-date">Aug 2026 · Deterioration expected</span><span class="cell-note">80% range 64.2%–65.3%</span></td><td><span class="cell-value pending">—</span><span class="cell-date">Not yet released</span><span class="cell-note">Added in the outturn edition</span></td><td class="detail-cell"><a href="rtt-18-week-outlook-latest.html">View →</a></td></tr><tr class="metric-row"><th scope="row"><a class="metric-name" href="diagnostics-six-week-outlook-latest.html">Diagnostics waiting over six weeks</a><span class="metric-benchmark">1% operational standard</span><span class="metric-signal">35 favourable · 30 adverse provider signals</span></th><td><span class="cell-value">23.1%</span><span class="cell-date">Jul 2026</span><span class="cell-note">Baseline when outlook was made</span></td><td class="forecast-cell"><span class="cell-value">25.2%</span><span class="cell-date">Aug 2026 · Deterioration expected</span><span class="cell-note">80% range 22.7%–27.2%</span></td><td><span class="cell-value pending">—</span><span class="cell-date">Not yet released</span><span class="cell-note">Added in the outturn edition</span></td><td class="detail-cell"><a href="diagnostics-six-week-outlook-latest.html">View →</a></td></tr><tr class="metric-row"><th scope="row"><a class="metric-name" href="cancer-62-day-outlook-latest.html">Cancer treatment within 62 days</a><span class="metric-benchmark">85% constitutional standard</span><span class="metric-signal">22 favourable · 9 adverse provider signals</span></th><td><span class="cell-value">71.2%</span><span class="cell-date">Jul 2026</span><span class="cell-note">Baseline when outlook was made</span></td><td class="forecast-cell"><span class="cell-value">70.7%</span><span class="cell-date">Aug 2026 · Broadly stable</span><span class="cell-note">80% range 68.9%–72.3%</span></td><td><span class="cell-value pending">—</span><span class="cell-date">Not yet released</span><span class="cell-note">Added in the outturn edition</span></td><td class="detail-cell"><a href="cancer-62-day-outlook-latest.html">View →</a></td></tr><tr class="group-row"><th colspan="5">Community</th></tr><tr class="metric-row"><th scope="row"><a class="metric-name" href="urgent-community-response-outlook-latest.html">Two-hour urgent community response</a><span class="metric-benchmark">70% national standard</span><span class="metric-signal">6 favourable · 4 adverse provider signals</span></th><td><span class="cell-value">85.3%</span><span class="cell-date">Jul 2026</span><span class="cell-note">Baseline when outlook was made</span></td><td class="forecast-cell"><span class="cell-value">86.1%</span><span class="cell-date">Aug 2026 · Improvement expected</span><span class="cell-note">80% range 85.6%–86.9%</span></td><td><span class="cell-value pending">—</span><span class="cell-date">Not yet released</span><span class="cell-note">Added in the outturn edition</span></td><td class="detail-cell"><a href="urgent-community-response-outlook-latest.html">View →</a></td></tr><tr class="metric-row"><th scope="row"><a class="metric-name" href="community-18-week-outlook-latest.html">Community waiting list within 18 weeks</a><span class="metric-benchmark">80% by March 2029</span><span class="metric-signal">Provider trajectory watch not available</span></th><td><span class="cell-value">75.9%</span><span class="cell-date">Jul 2026</span><span class="cell-note">Baseline when outlook was made</span></td><td class="forecast-cell"><span class="cell-value">75.3%</span><span class="cell-date">Aug 2026 · Deterioration expected</span><span class="cell-note">80% range 74.2%–76.3%</span></td><td><span class="cell-value pending">—</span><span class="cell-date">Not yet released</span><span class="cell-note">Added in the outturn edition</span></td><td class="detail-cell"><a href="community-18-week-outlook-latest.html">View →</a></td></tr><tr class="group-row"><th colspan="5">Mental health</th></tr><tr class="metric-row"><th scope="row"><a class="metric-name" href="talking-therapies-six-week-outlook-latest.html">Talking Therapies within six weeks</a><span class="metric-benchmark">75% national standard</span><span class="metric-signal">Provider trajectory watch not available</span></th><td><span class="cell-value">83.8%</span><span class="cell-date">Jul 2026</span><span class="cell-note">Baseline when outlook was made</span></td><td class="forecast-cell"><span class="cell-value">85.2%</span><span class="cell-date">Aug 2026 · Improvement expected</span><span class="cell-note">80% range 83.4%–86.7%</span></td><td><span class="cell-value pending">—</span><span class="cell-date">Not yet released</span><span class="cell-note">Added in the outturn edition</span></td><td class="detail-cell"><a href="talking-therapies-six-week-outlook-latest.html">View →</a></td></tr></tbody>
       </table>
-<div class="outlook-actions"><a class="button-link primary" href="forecasts/2026-10-07/nhs-performance-outlook-forecast-2026-10-07.pdf">Download this edition as PDF</a><a class="button-link" href="#detailed-forecasts">Detailed forecasts</a></div>
-
+<div class="outlook-actions"><a class="button-link primary" href="forecasts/2026-10-07/nhs-performance-outlook-forecast-2026-10-07.pdf">Download this edition as PDF</a></div>
       <section class="method">
         <p><strong>How to read this.</strong> Outlooks are one-month-ahead forecasts made only with information available before release. The 80% range reflects historic one-step forecast errors. Provider signals compare six successive releases with the forecasts archived before each release; they are prompts for review, not rankings.</p>
         <p class="sources"><strong>Sources.</strong> <a href="https://www.england.nhs.uk/statistics/statistical-work-areas/ae-waiting-times-and-activity/">NHS England A&amp;E attendances and emergency admissions</a> · <a href="https://www.england.nhs.uk/statistics/statistical-work-areas/ambulance-quality-indicators/">NHS England Ambulance Quality Indicators</a> · <a href="https://www.england.nhs.uk/statistics/statistical-work-areas/rtt-waiting-times/">NHS England referral to treatment waiting times</a> · <a href="https://www.england.nhs.uk/statistics/statistical-work-areas/diagnostics-waiting-times-and-activity/monthly-diagnostics-waiting-times-and-activity/">NHS England diagnostic waiting times and activity</a> · <a href="https://www.england.nhs.uk/statistics/statistical-work-areas/cancer-waiting-times/">NHS England cancer waiting times</a> · <a href="https://www.england.nhs.uk/statistics/statistical-work-areas/2-hour-urgent-community-response/">NHS England two-hour urgent community response</a> · <a href="https://www.england.nhs.uk/statistics/statistical-work-areas/community-health-services-waiting-lists/">NHS England community health services waiting lists</a> · <a href="https://digital.nhs.uk/data-and-information/publications/statistical/nhs-talking-therapies-monthly-statistics-including-employment-advisors">NHS Talking Therapies monthly statistics</a>. Planning milestones and standards are cited in each indicator deep dive.</p>
       </section>
     </main>
-    <footer><span><span class="brand-footer">ROCKS / HEALTH</span> · Independent analysis by Stephen Rocks; not an NHS publication.</span><span>Generated 07 October 2026, 09:41 BST</span></footer>
+    <footer><span><span class="brand-footer">ROCKS / HEALTH</span> · Independent analysis by Stephen Rocks; not an NHS publication.</span><span>Generated 07 October 2026, 13:50 BST</span></footer>
   </article>
-<section class="details-page" id="detailed-forecasts">
-  <div class="details-kicker">Supporting analysis</div>
-  <h2>Detailed forecasts</h2>
-  <p class="details-intro">
-    Indicator-level forecasts provide the recent trend, modelled outlook,
-    uncertainty and supporting analysis behind the headline NHS Outlook.
-  </p>
-  <div class="detail-group">
-    <h3>Urgent care</h3>
-    <div class="detail-list">
-      <div class="detail-item"><span class="detail-name">A&E four-hour performance</span><a class="detail-link" href="forecasts/2026-10-07/ambulance-category-2-outlook-forecast-2026-10-07.pdf">View PDF →</a></div>
-    </div>
-  </div>
-  <div class="detail-group">
-    <h3>Planned care</h3>
-    <div class="detail-list">
-      <div class="detail-item"><span class="detail-name">RTT within 18 weeks</span><a class="detail-link" href="forecasts/2026-10-07/rtt-18-week-outlook-forecast-2026-10-07.pdf">View PDF →</a></div>
-      <div class="detail-item"><span class="detail-name">Diagnostics waiting over six weeks</span><a class="detail-link" href="forecasts/2026-10-07/diagnostics-six-week-outlook-forecast-2026-10-07.pdf">View PDF →</a></div>
-      <div class="detail-item"><span class="detail-name">Cancer treatment within 62 days</span><a class="detail-link" href="forecasts/2026-10-07/cancer-62-day-outlook-forecast-2026-10-07.pdf">View PDF →</a></div>
-    </div>
-  </div>
-  <div class="detail-group">
-    <h3>Community</h3>
-    <div class="detail-list">
-      <div class="detail-item"><span class="detail-name">Community waiting list within 18 weeks</span><a class="detail-link" href="forecasts/2026-10-07/community-18-week-outlook-forecast-2026-10-07.pdf">View PDF →</a></div>
-    </div>
-  </div>
-  <div class="detail-group">
-    <h3>Mental health</h3>
-    <div class="detail-list">
-      <div class="detail-item"><span class="detail-name">Talking Therapies within six weeks</span><a class="detail-link" href="forecasts/2026-10-07/talking-therapies-six-week-outlook-forecast-2026-10-07.pdf">View PDF →</a></div>
-    </div>
-  </div>
-  <p class="details-note">Release: 07 October 2026. The NHS Outlook above is the headline publication; these PDFs provide supporting indicator-level detail.</p>
-</section>
 </body>
 </html>

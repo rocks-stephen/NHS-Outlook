@@ -310,6 +310,30 @@ for (metric_index in seq_len(nrow(core_metrics))) {
     provider_status_reason <- "Sufficient national and provider history."
   }
 
+  if (metric_id_value == "ucr_2h") {
+    ucr_eligibility <- if (nrow(watchlist)) {
+      watchlist[, .(
+        metric_id, entity_id, entity_name, data_through_month,
+        signal_eligibility_reason, signal_months_n, volume_measure,
+        minimum_volume_in_signal_window, minimum_required_volume,
+        latest_value, latest_activity_volume_proxy, signal
+      )]
+    } else {
+      data.table::data.table(
+        metric_id = character(), entity_id = character(), entity_name = character(),
+        data_through_month = data.table::as.IDate(character()),
+        signal_eligibility_reason = character(), signal_months_n = integer(),
+        volume_measure = character(), minimum_volume_in_signal_window = numeric(),
+        minimum_required_volume = numeric(), latest_value = numeric(),
+        latest_activity_volume_proxy = numeric(), signal = character()
+      )
+    }
+    dir.create("output/qa", recursive = TRUE, showWarnings = FALSE)
+    data.table::fwrite(
+      ucr_eligibility, "output/qa/ucr_provider_model_eligibility.csv"
+    )
+  }
+
   overview <- core_overview_row(
     metric_row, national, national_reference, national_next, national_archive,
     national_scorecard, watchlist, metric_targets

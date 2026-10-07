@@ -101,6 +101,7 @@ for (metric in metrics) {
   status_row <- model_status[metric_id == metric]
   required_names <- c(
     "national_next_release_forecast.csv",
+    "national_all_model_forecasts.csv",
     "national_reference_projection.csv",
     "provider_latest_watchlist.csv",
     "national_release_forecast_archive.csv",
@@ -127,6 +128,10 @@ for (metric in metrics) {
     forecast_month = data.table::as.IDate(forecast_month)
   )]
   provider_path <- file.path(directory, "provider_next_release_forecast.csv")
+  all_model_forecasts <- data.table::fread(
+    file.path(directory, "national_all_model_forecasts.csv"), encoding = "UTF-8"
+  )
+  all_model_forecasts[, forecast_month := data.table::as.IDate(forecast_month)]
   provider <- if (
     status_row$model_status[1L] == "included" && file.exists(provider_path)
   ) data.table::fread(provider_path, encoding = "UTF-8") else data.table::data.table()
@@ -146,7 +151,9 @@ for (metric in metrics) {
     "components_available_next_release", "final_fit_consecutive_months",
     "configured_backtest_months", "backtest_predictions_scored",
     "interval_method", "interval_calibration_n", "ensemble_weight_summary",
-    "ensemble_weighting_target_months", "ensemble_weighting_method"
+    "ensemble_weighting_target_months", "ensemble_weighting_method",
+    "interval_calibration_window_months", "interval_residual_center_native",
+    "interval_centering_method"
   )
   method_schema_ok <- all(method_required %in% names(method))
   add_check(
@@ -241,6 +248,16 @@ for (metric in metrics) {
   flagged <- watchlist[signal %in% c("sustained_favourable", "sustained_adverse")]
   add_check(metric, "one_national_next_forecast", nrow(national) == 1L,
             paste("rows", nrow(national)))
+  reference_point <- all_model_forecasts[
+    model == "reference_ensemble" & horizon_months == 1L, predicted_value
+  ]
+  add_check(
+    metric, "interval_calculation_preserves_point_forecast",
+    nrow(national) == 1L && length(reference_point) == 1L &&
+      abs(national$predicted_value[1L] - reference_point[1L]) <= 1e-12,
+    paste("published", national$predicted_value[1L],
+          "reference model", if (length(reference_point)) reference_point[1L] else NA_real_)
+  )
   add_check(
     metric, "national_targets_next_month",
     nrow(national) == 1L &&
@@ -255,6 +272,35 @@ for (metric in metrics) {
       national$upper_80 <= national$upper_95,
     "lower95 <= lower80 <= point <= upper80 <= upper95"
   )
+  if (metric == "rtt_18w") {
+    symmetry_tolerance <- 1e-10
+    add_check(
+      metric, "national_interval_symmetric_about_point",
+      nrow(national) == 1L &&
+        abs((national$predicted_value - national$lower_80) -
+              (national$upper_80 - national$predicted_value)) <=
+          symmetry_tolerance &&
+        abs((national$predicted_value - national$lower_95) -
+              (national$upper_95 - national$predicted_value)) <=
+          symmetry_tolerance,
+      "lower = point - width and upper = point + width, after symmetric logical bounds"
+    )
+    add_check(
+      metric, "rtt_interval_uses_recent_centered_symmetric_errors",
+      method_schema_ok &&
+        grepl("centered_symmetric", national$interval_method[1L], fixed = TRUE) &&
+        method$interval_calibration_window_months[1L] == 24L &&
+        grepl("median_removed", method$interval_centering_method[1L], fixed = TRUE),
+      if (method_schema_ok) {
+        paste(
+          national$interval_method[1L],
+          "window", method$interval_calibration_window_months[1L]
+        )
+      } else {
+        "forecast method record lacks interval-calibration metadata"
+      }
+    )
+  }
   add_check(
     metric, "national_interval_calibration",
     nrow(national) == 1L &&
@@ -284,6 +330,18 @@ for (metric in metrics) {
       ),
       "lower95 <= lower80 <= point <= upper80 <= upper95"
     )
+    if (metric == "rtt_18w") {
+      add_check(
+        metric, "provider_intervals_symmetric_about_point",
+        nrow(provider) > 0L && all(
+          abs((provider$predicted_value - provider$lower_80) -
+                (provider$upper_80 - provider$predicted_value)) <= 1e-10 &
+            abs((provider$predicted_value - provider$lower_95) -
+                  (provider$upper_95 - provider$predicted_value)) <= 1e-10
+        ),
+        paste(nrow(provider), "provider interval(s)")
+      )
+    }
     add_check(
       metric, "provider_targets_common_next_month",
       nrow(provider) > 0L && data.table::uniqueN(provider$data_through_month) == 1L &&
@@ -299,6 +357,38 @@ for (metric in metrics) {
       ),
       paste("flagged", nrow(flagged))
     )
+    if (metric == "ucr_2h") {
+      ucr_schema <- c(
+        "signal_eligibility_reason", "volume_measure",
+        "minimum_volume_in_signal_window", "minimum_required_volume",
+        "latest_activity_volume_proxy"
+      )
+      eligible_ucr <- if (all(ucr_schema %in% names(watchlist))) {
+        watchlist[signal_eligibility_reason == "eligible"]
+      } else {
+        watchlist[0L]
+      }
+      add_check(
+        metric, "ucr_provider_watch_uses_explicit_activity_volume_screen",
+        all(ucr_schema %in% names(watchlist)) && nrow(eligible_ucr) > 0L &&
+          all(eligible_ucr$volume_measure ==
+                "two_hour_referrals_received_activity_proxy") &&
+          all(eligible_ucr$minimum_volume_in_signal_window >=
+                eligible_ucr$minimum_required_volume),
+        paste(nrow(eligible_ucr), "eligible provider(s)")
+      )
+      add_check(
+        metric, "ucr_provider_exclusions_are_labelled",
+        all(ucr_schema %in% names(watchlist)) && all(
+          !is.na(watchlist$signal_eligibility_reason) &
+            nzchar(watchlist$signal_eligibility_reason)
+        ),
+        paste(
+          sum(watchlist$signal_eligibility_reason != "eligible"),
+          "provider(s) explicitly excluded"
+        )
+      )
+    }
   } else {
     add_check(
       metric, "provider_watch_withheld_and_labelled",

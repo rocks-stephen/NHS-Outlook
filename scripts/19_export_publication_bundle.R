@@ -15,11 +15,12 @@ overview_manifest <- data.table::fread(
   "output/performance/overview_manifest.csv", encoding = "UTF-8"
 )
 assert_columns(
-  overview_manifest, c("issue_date", "publication_mode"),
+  overview_manifest, c("issue_date", "publication_mode", "publication_status"),
   "performance overview manifest"
 )
 issue_day <- overview_manifest$issue_date[1L]
 publication_mode <- overview_manifest$publication_mode[1L]
+publication_status <- overview_manifest$publication_status[1L]
 if (!publication_mode %in% c("forecast", "outturn")) {
   stop("Overview manifest has an invalid publication mode: ", publication_mode, ".")
 }
@@ -112,6 +113,7 @@ manifest_parts <- lapply(html_files, function(html_path) {
   data.table::data.table(
     issue_date = issue_day,
     publication_mode = publication_mode,
+    publication_status = publication_status,
     artifact_role = if (grepl("nhs-performance-", basename(html_path))) {
       "overview"
     } else if (grepl("provider-watch", basename(html_path), fixed = TRUE)) {

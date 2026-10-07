@@ -14,6 +14,15 @@ core_config_integer <- function(config_row, column, minimum = -Inf, maximum = In
   value
 }
 
+core_config_character <- function(config_row, column, allowed = NULL) {
+  value <- trimws(as.character(config_row[[column]][1L]))
+  if (length(value) != 1L || is.na(value) || !nzchar(value) ||
+      (!is.null(allowed) && !value %in% allowed)) {
+    stop("Invalid core model setting '", column, "' for ", config_row$metric_id[1L], ".")
+  }
+  value
+}
+
 core_transform <- function(value, unit) {
   if (unit == "proportion") return(logit_probability(value))
   if (unit %in% c("minutes", "count")) return(log(pmax(as.numeric(value), 1e-6)))
@@ -536,10 +545,29 @@ core_forecast_method_record <- function(metric_row, config_row, national_panel,
     },
     interval_method = next_release$interval_method[1L],
     interval_calibration_n = next_release$interval_calibration_n[1L],
-    interval_definition = paste(
-      "Historic one-step reference-model errors form the predictive range;",
-      "longer horizons scale those errors by the square root of horizon."
-    ),
+    interval_calibration_window_months =
+      next_release$interval_calibration_window_months[1L],
+    interval_residual_center_native =
+      next_release$interval_residual_center_native[1L],
+    interval_centering_method = next_release$interval_centering_method[1L],
+    interval_definition = if (
+      core_config_character(
+        config_row, "interval_calibration_method",
+        c("empirical_error_quantiles", "recent_centered_symmetric_absolute_error")
+      ) == "recent_centered_symmetric_absolute_error"
+    ) {
+      paste(
+        "Recent one-step reference-model errors are median-centred and their",
+        "absolute magnitudes set a symmetric predictive range around the point",
+        "forecast; logical bounds are applied symmetrically and longer horizons",
+        "scale widths by the square root of horizon."
+      )
+    } else {
+      paste(
+        "Historic one-step reference-model errors form the predictive range;",
+        "longer horizons scale those errors by the square root of horizon."
+      )
+    },
     point_forecast = next_release$predicted_value[1L],
     lower_80 = next_release$lower_80[1L],
     upper_80 = next_release$upper_80[1L]
@@ -589,17 +617,37 @@ core_make_final_forecasts <- function(panel, metric_row, config_row,
 }
 
 core_interval_calibration <- function(residuals, empirical_minimum_n,
-                                      parametric_minimum_n, label) {
+                                      parametric_minimum_n, label,
+                                      calibration_method =
+                                        "empirical_error_quantiles") {
   z <- as.numeric(residuals[is.finite(residuals)])
   calibration_n <- length(z)
   probabilities <- c(0.025, 0.10, 0.90, 0.975)
+  symmetric <- identical(
+    calibration_method, "recent_centered_symmetric_absolute_error"
+  )
+  residual_center <- if (symmetric && calibration_n) stats::median(z) else 0
   if (calibration_n >= empirical_minimum_n) {
+    if (symmetric) {
+      radii <- stats::quantile(
+        abs(z - residual_center), c(0.80, 0.95), names = FALSE, type = 8
+      )
+      return(list(
+        quantiles = c(-radii[2L], -radii[1L], radii[1L], radii[2L]),
+        calibration_n = calibration_n,
+        method = "centered_symmetric_absolute_error_empirical",
+        residual_center = residual_center,
+        centering_method = "median_removed_before_absolute_error_calibration"
+      ))
+    }
     return(list(
       quantiles = stats::quantile(
         z, probabilities, names = FALSE, type = 8
       ),
       calibration_n = calibration_n,
-      method = "empirical"
+      method = "empirical",
+      residual_center = residual_center,
+      centering_method = "none"
     ))
   }
   if (calibration_n < parametric_minimum_n) {
@@ -617,18 +665,44 @@ core_interval_calibration <- function(residuals, empirical_minimum_n,
     )
   }
   predictive_scale <- residual_scale * sqrt(1 + 1 / calibration_n)
+  if (symmetric) {
+    radii <- stats::qt(c(0.90, 0.975), df = calibration_n - 1L) *
+      predictive_scale
+    return(list(
+      quantiles = c(-radii[2L], -radii[1L], radii[1L], radii[2L]),
+      calibration_n = calibration_n,
+      method = "centered_symmetric_student_t_predictive_small_sample",
+      residual_center = residual_center,
+      centering_method = "median_removed_before_symmetric_student_t_calibration"
+    ))
+  }
   list(
     quantiles = mean(z) + stats::qt(
       probabilities, df = calibration_n - 1L
     ) * predictive_scale,
     calibration_n = calibration_n,
-    method = "student_t_predictive_small_sample"
+    method = "student_t_predictive_small_sample",
+    residual_center = residual_center,
+    centering_method = "none"
   )
 }
 
 core_add_intervals <- function(forecast, rolling, metric_row, config_row,
                                provider_pool = FALSE) {
   reference_residuals <- rolling[model == "reference_ensemble"]
+  calibration_months <- core_config_integer(
+    config_row, "interval_calibration_months", 1L
+  )
+  calibration_method <- core_config_character(
+    config_row, "interval_calibration_method",
+    c("empirical_error_quantiles", "recent_centered_symmetric_absolute_error")
+  )
+  if (nrow(reference_residuals)) {
+    latest_target_id <- max(month_id(reference_residuals$target_month))
+    reference_residuals <- reference_residuals[
+      month_id(target_month) >= latest_target_id - calibration_months + 1L
+    ]
+  }
   minimum_n <- core_config_integer(
     config_row, "minimum_interval_residuals", 5L
   )
@@ -645,9 +719,10 @@ core_add_intervals <- function(forecast, rolling, metric_row, config_row,
     reference_residuals$error_native,
     empirical_minimum_n = minimum_n,
     parametric_minimum_n = parametric_minimum_n,
-    label = pool_label
+    label = pool_label,
+    calibration_method = calibration_method
   )
-  if (pooled$method == "student_t_predictive_small_sample") {
+  if (grepl("student_t_predictive_small_sample", pooled$method, fixed = TRUE)) {
     message(
       metric_id_value, ": using a small-sample Student-t predictive interval from ",
       pooled$calibration_n, " one-step residuals (empirical threshold ",
@@ -663,7 +738,8 @@ core_add_intervals <- function(forecast, rolling, metric_row, config_row,
         calibration,
         empirical_minimum_n = minimum_n,
         parametric_minimum_n = minimum_n,
-        label = paste(metric_id_value, out$entity_id[i])
+        label = paste(metric_id_value, out$entity_id[i]),
+        calibration_method = calibration_method
       )
     } else {
       pooled
@@ -671,22 +747,45 @@ core_add_intervals <- function(forecast, rolling, metric_row, config_row,
     quantiles <- selected$quantiles
     scale <- sqrt(out$horizon_months[i])
     point <- out$predicted_value[i]
-    raw_lower_95 <- core_bound_value(point + quantiles[1L] * scale,
-                                     metric_row$unit[1L])
-    raw_lower_80 <- core_bound_value(point + quantiles[2L] * scale,
-                                     metric_row$unit[1L])
-    raw_upper_80 <- core_bound_value(point + quantiles[3L] * scale,
-                                     metric_row$unit[1L])
-    raw_upper_95 <- core_bound_value(point + quantiles[4L] * scale,
-                                     metric_row$unit[1L])
+    if (calibration_method == "recent_centered_symmetric_absolute_error") {
+      radius_80 <- abs(quantiles[3L]) * scale
+      radius_95 <- abs(quantiles[4L]) * scale
+      if (metric_row$unit[1L] == "proportion") {
+        logical_bound <- max(0, min(point, 1 - point))
+        radius_80 <- min(radius_80, logical_bound)
+        radius_95 <- min(radius_95, logical_bound)
+      } else if (metric_row$unit[1L] %in% c("minutes", "count")) {
+        radius_80 <- min(radius_80, point)
+        radius_95 <- min(radius_95, point)
+      }
+      raw_lower_95 <- point - radius_95
+      raw_lower_80 <- point - radius_80
+      raw_upper_80 <- point + radius_80
+      raw_upper_95 <- point + radius_95
+    } else {
+      raw_lower_95 <- core_bound_value(point + quantiles[1L] * scale,
+                                       metric_row$unit[1L])
+      raw_lower_80 <- core_bound_value(point + quantiles[2L] * scale,
+                                       metric_row$unit[1L])
+      raw_upper_80 <- core_bound_value(point + quantiles[3L] * scale,
+                                       metric_row$unit[1L])
+      raw_upper_95 <- core_bound_value(point + quantiles[4L] * scale,
+                                       metric_row$unit[1L])
+    }
     data.table::data.table(
       lower_95 = min(point, raw_lower_95),
       lower_80 = min(point, raw_lower_80),
       upper_80 = max(point, raw_upper_80),
       upper_95 = max(point, raw_upper_95),
       interval_calibration_n = selected$calibration_n,
+      interval_calibration_window_months = calibration_months,
+      interval_residual_center_native = selected$residual_center,
+      interval_centering_method = selected$centering_method,
       interval_method = if (use_entity) {
-        "entity_empirical_one_step_scaled_by_sqrt_horizon"
+        paste0(
+          "entity_", selected$method,
+          "_one_step_scaled_by_sqrt_horizon"
+        )
       } else if (provider_pool) {
         paste0(
           "pooled_provider_", selected$method,
@@ -773,6 +872,11 @@ core_archive_rows <- function(next_release, metric_row, config_row) {
     upper_80,
     lower_95,
     upper_95,
+    interval_calibration_n,
+    interval_method,
+    interval_calibration_window_months,
+    interval_residual_center_native,
+    interval_centering_method,
     latest_actual_value,
     unit = metric_row$unit[1L],
     higher_is_better = metric_row$higher_is_better[1L]
@@ -862,17 +966,51 @@ core_provider_signals <- function(surprises, provider_panel, metric_row, config_
     history <- data.table::copy(surprises[entity_id == entity])
     data.table::setorder(history, target_month)
     history <- utils::tail(history[target_month <= latest_month], window)
-    latest_provider <- provider_panel[
-      entity_id == entity & calendar_month == latest_month
-    ]
-    denominator_ok <- !nrow(latest_provider) ||
-      !is.finite(minimum_denominator) || minimum_denominator <= 0 ||
-      (is.finite(latest_provider$denominator[1L]) &&
-         latest_provider$denominator[1L] >= minimum_denominator)
+    provider_window <- data.table::copy(provider_panel[
+      entity_id == entity & calendar_month <= latest_month
+    ])
+    data.table::setorder(provider_window, calendar_month)
+    provider_window <- utils::tail(provider_window, window)
+    use_denominator <- nrow(provider_window) == window &&
+      all(is.finite(provider_window$denominator))
+    use_activity_proxy <- !use_denominator &&
+      "activity_volume_proxy" %in% names(provider_window) &&
+      nrow(provider_window) == window &&
+      all(is.finite(provider_window$activity_volume_proxy))
+    volume <- if (use_denominator) {
+      provider_window$denominator
+    } else if (use_activity_proxy) {
+      provider_window$activity_volume_proxy
+    } else {
+      rep(NA_real_, window)
+    }
+    volume_measure <- if (use_denominator) {
+      "published_metric_denominator"
+    } else if (use_activity_proxy) {
+      "two_hour_referrals_received_activity_proxy"
+    } else {
+      "unavailable"
+    }
+    minimum_volume <- if (length(volume) && all(is.finite(volume))) {
+      min(volume)
+    } else {
+      NA_real_
+    }
+    volume_ok <- !is.finite(minimum_denominator) || minimum_denominator <= 0 ||
+      (is.finite(minimum_volume) && minimum_volume >= minimum_denominator)
     consecutive <- nrow(history) == window &&
       all(diff(month_id(history$target_month)) == 1L) &&
       max(history$target_month) == latest_month
-    if (!consecutive || !denominator_ok) {
+    eligibility_reason <- if (!consecutive) {
+      "insufficient_consecutive_forecast_surprises"
+    } else if (!length(volume) || any(!is.finite(volume))) {
+      "missing_volume_for_signal_window"
+    } else if (!volume_ok) {
+      "below_minimum_volume"
+    } else {
+      "eligible"
+    }
+    if (!consecutive || !volume_ok) {
       return(data.table::data.table(
         metric_id = metric_row$metric_id[1L],
         entity_id = entity,
@@ -886,7 +1024,11 @@ core_provider_signals <- function(surprises, provider_panel, metric_row, config_
         direction_share = NA_real_,
         latest_error_same_direction = NA,
         signal = "insufficient_history_or_volume",
-        signal_evidence = NA_character_
+        signal_evidence = NA_character_,
+        signal_eligibility_reason = eligibility_reason,
+        volume_measure = volume_measure,
+        minimum_volume_in_signal_window = minimum_volume,
+        minimum_required_volume = minimum_denominator
       ))
     }
     favourable_errors <- if (higher_is_better) {
@@ -934,7 +1076,11 @@ core_provider_signals <- function(surprises, provider_panel, metric_row, config_
       direction_share = direction_share,
       latest_error_same_direction = latest_same,
       signal = signal,
-      signal_evidence = evidence
+      signal_evidence = evidence,
+      signal_eligibility_reason = "eligible",
+      volume_measure = volume_measure,
+      minimum_volume_in_signal_window = minimum_volume,
+      minimum_required_volume = minimum_denominator
     )
   })
   out <- data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
@@ -947,7 +1093,9 @@ core_provider_watchlist <- function(signals, provider_panel, provider_next) {
   latest <- provider_panel[
     calendar_month == latest_month,
     .(metric_id, entity_id, latest_value = value,
-      latest_denominator = denominator, complete_submission)
+      latest_denominator = denominator,
+      latest_activity_volume_proxy = activity_volume_proxy,
+      activity_volume_proxy_method, complete_submission)
   ]
   next_values <- provider_next[, .(
     metric_id, entity_id, forecast_month,
@@ -976,8 +1124,14 @@ core_empty_provider_watchlist <- function() {
     latest_error_same_direction = logical(),
     signal = character(),
     signal_evidence = character(),
+    signal_eligibility_reason = character(),
+    volume_measure = character(),
+    minimum_volume_in_signal_window = numeric(),
+    minimum_required_volume = numeric(),
     latest_value = numeric(),
     latest_denominator = numeric(),
+    latest_activity_volume_proxy = numeric(),
+    activity_volume_proxy_method = character(),
     complete_submission = logical(),
     forecast_month = data.table::as.IDate(character()),
     next_release_forecast = numeric(),

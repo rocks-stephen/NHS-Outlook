@@ -244,8 +244,7 @@ Once `scripts/00_bootstrap_renv.R` has prepared the R environment, run this for 
 pre-release forecast:
 
 ```r
-options(nhs.outlook.publication_mode = "forecast")
-source("scripts/18_run_monthly_refresh.R")
+source("R/run_publication.R")
 ```
 
 After the release, use outturn mode and restart discovery:
@@ -255,17 +254,18 @@ options(
   nhs.outlook.publication_mode = "outturn",
   ae.refresh.start_stage = 1
 )
-source("scripts/18_run_monthly_refresh.R")
+source("R/run_publication.R")
 ```
 
-The refresh updates the eight configured headline measures, stops on failed source/schema/QA
+The publication runner updates the eight configured headline measures, stops on failed source/schema/QA
 checks, retains the forecast archives, and rebuilds the overview plus each eligible
 metric's one- or two-page deep dive. Optional measures with insufficient validated history are
 reported and omitted rather than allowed to weaken the publication. The main file
 to open or print is `output/releases/nhs-performance-outlook-latest.html`. The final
 automated gate writes `output/qa/release_signoff.csv`; publication should wait until its
-fatal checks pass and its manual review rows have been completed. The mode is required
-and is cleared after a successful run. Forecast mode freezes the published row set;
+fatal checks pass and its manual review rows have been completed. Forecast mode is the
+default and publication options are cleared after a successful run. Forecast mode
+freezes the published row set;
 outturn mode refuses to build until every corresponding new actual has been imported.
 On release day, do not resume after discovery: a full stage-1 run is what makes the code
 see new publication pages and files.
@@ -275,5 +275,5 @@ option before sourcing the runner. For example, after a stage 02 failure:
 
 ```r
 options(ae.refresh.start_stage = 2)
-source("scripts/18_run_monthly_refresh.R")
+source("R/run_publication.R")
 ```

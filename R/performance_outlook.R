@@ -414,7 +414,7 @@ performance_outlook_table_rows <- function(rows) {
     group <- if ("overview_group" %in% names(row)) row$overview_group[1L] else ""
     if (!is.na(group) && nzchar(group) && group != previous_group) {
       pieces <- c(pieces, paste0(
-        '<tr class="group-row"><th colspan="4">',
+        '<tr class="group-row"><th colspan="5">',
         performance_html_escape(group), '</th></tr>'
       ))
       previous_group <- group
@@ -474,7 +474,9 @@ performance_outlook_table_rows <- function(rows) {
       '</span><span class="cell-note">80% range ',
       performance_format_value(row$lower_80, row$unit, row$digits), "–",
       performance_format_value(row$upper_80, row$unit, row$digits),
-      '</span></td><td>', actual_cell, '</td></tr>'
+      '</span></td><td>', actual_cell, '</td>',
+      '<td class="detail-cell"><a href="',
+      performance_html_escape(row$deep_dive_file), '">View →</a></td></tr>'
     ))
   }
   paste(pieces, collapse = "")
@@ -570,7 +572,9 @@ build_performance_outlook_page <- function(rows, template_path, output_path,
                                            excluded_metrics = character(),
                                            edition = "forecast",
                                            editorial_commentary = "",
-                                           publication_issue_date = Sys.Date()) {
+                                           publication_issue_date = Sys.Date(),
+                                           publication_status =
+                                             nhs_outlook_publication_status()) {
   validate_performance_outlook_rows(rows)
   template <- paste(readLines(template_path, warn = FALSE), collapse = "\n")
   issue_date <- format(as.Date(publication_issue_date), "%d %B %Y")
@@ -590,7 +594,7 @@ build_performance_outlook_page <- function(rows, template_path, output_path,
       paste(excluded_metrics, collapse = ", "), "."
     )
   }
-  edition_label <- if (edition == "forecast") "Forecast edition" else "Outturn edition"
+  edition_label <- nhs_outlook_edition_label(edition, publication_status)
   summary <- if (!is.na(editorial_commentary) && nzchar(trimws(editorial_commentary))) {
     editorial_commentary
   } else {
@@ -607,6 +611,11 @@ build_performance_outlook_page <- function(rows, template_path, output_path,
   output <- performance_fill_template(template, list(
     PAGE_TITLE = paste0("NHS Outlook · ", edition_label),
     EDITION_LABEL = edition_label,
+    PUBLICATION_STATUS_CLASS = if (publication_status == "pilot") {
+      " pilot"
+    } else {
+      ""
+    },
     SUBTITLE = if (edition == "forecast") {
       "What the next monthly releases are expected to show"
     } else {

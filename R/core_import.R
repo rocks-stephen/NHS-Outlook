@@ -13,7 +13,9 @@ core_latest_nonmissing_character <- function(x) {
 }
 
 core_make_national_rows <- function(metric_id, month, value, numerator, denominator,
-                                    complete, source, method) {
+                                    complete, source, method,
+                                    activity_volume_proxy = NA_real_,
+                                    activity_volume_proxy_method = NA_character_) {
   data.table::data.table(
     metric_id = metric_id,
     calendar_month = data.table::as.IDate(month),
@@ -21,6 +23,8 @@ core_make_national_rows <- function(metric_id, month, value, numerator, denomina
     entity_name = "England",
     numerator = as.numeric(numerator),
     denominator = as.numeric(denominator),
+    activity_volume_proxy = as.numeric(activity_volume_proxy),
+    activity_volume_proxy_method = as.character(activity_volume_proxy_method),
     value = as.numeric(value),
     complete_submission = as.logical(complete),
     source_method = method,
@@ -32,7 +36,9 @@ core_make_national_rows <- function(metric_id, month, value, numerator, denomina
 
 core_make_provider_rows <- function(metric_id, month, entity_id, entity_name,
                                     value, numerator, denominator, complete,
-                                    source, method) {
+                                    source, method,
+                                    activity_volume_proxy = NA_real_,
+                                    activity_volume_proxy_method = NA_character_) {
   data.table::data.table(
     metric_id = metric_id,
     calendar_month = data.table::as.IDate(month),
@@ -40,6 +46,8 @@ core_make_provider_rows <- function(metric_id, month, entity_id, entity_name,
     entity_name = as.character(entity_name),
     numerator = as.numeric(numerator),
     denominator = as.numeric(denominator),
+    activity_volume_proxy = as.numeric(activity_volume_proxy),
+    activity_volume_proxy_method = as.character(activity_volume_proxy_method),
     value = as.numeric(value),
     complete_submission = as.logical(complete),
     source_method = method,
@@ -663,14 +671,19 @@ core_read_ambulance_timeseries <- function(row) {
   )
 }
 
-core_read_ucr_workbook <- function(row) {
-  source <- core_source_fields(row)
+core_read_ucr_wide_table <- function(row, sheet, value_type) {
   sheets <- readxl::excel_sheets(row$local_path)
-  sheet <- sheets[grepl("(?i)^Table[ _-]*1$", sheets, perl = TRUE)][1L]
-  if (is.na(sheet)) {
-    stop("UCR workbook lacks Table 1 containing the two-hour percentage.")
-  }
+  if (!sheet %in% sheets) stop("UCR workbook lacks required sheet '", sheet, "'.")
   m <- read_excel_matrix(row$local_path, sheet)
+  table_title <- paste(m[seq_len(min(3L, nrow(m))), ], collapse = " ")
+  if (value_type == "proportion" &&
+      !grepl("(?i)%.*2[- ]hour.*UCR|2[- ]hour.*UCR.*%", table_title, perl = TRUE)) {
+    stop("UCR ", sheet, " is not the labelled two-hour percentage table.")
+  }
+  if (value_type == "count" &&
+      !grepl("(?i)count.*2[- ]hour.*UCR.*referral", table_title, perl = TRUE)) {
+    stop("UCR ", sheet, " is not the labelled two-hour referral count table.")
+  }
   header_row <- locate_header_row(
     m,
     c("(?i)^ODS Code$", "(?i)^Organisation Name$", "(?i)^Organisation Type$"),
@@ -687,7 +700,7 @@ core_read_ucr_workbook <- function(row) {
   months <- parse_month_cell(m[header_row, ])
   month_cols <- which(!is.na(months))
   if (!length(month_cols)) {
-    stop("UCR Table 1 contains no dated month columns.")
+    stop("UCR ", sheet, " contains no dated month columns.")
   }
   data_rows <- seq.int(header_row + 1L, nrow(m))
   organisation <- data.table::data.table(
@@ -696,18 +709,60 @@ core_read_ucr_workbook <- function(row) {
     type = trimws(m[data_rows, type_col])
   )
   pieces <- lapply(month_cols, function(column) {
-    value <- core_normalise_percentage(m[data_rows, column])
+    value <- if (value_type == "proportion") {
+      core_normalise_percentage(m[data_rows, column])
+    } else {
+      numeric_cell(m[data_rows, column])
+    }
     data.table::data.table(
       month = months[column],
       code = organisation$code,
       name = organisation$name,
       type = organisation$type,
       value = value,
-      complete = is.finite(value) & value >= 0 & value <= 1
+      complete = if (value_type == "proportion") {
+        is.finite(value) & value >= 0 & value <= 1
+      } else {
+        is.finite(value) & value >= 0
+      }
     )
   })
   x <- data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
-  x <- x[complete == TRUE & nzchar(name)]
+  x[complete == TRUE & nzchar(name)]
+}
+
+core_read_ucr_workbook <- function(row) {
+  source <- core_source_fields(row)
+  sheets <- readxl::excel_sheets(row$local_path)
+  rate_sheet <- sheets[grepl("(?i)^Table[ _-]*1$", sheets, perl = TRUE)][1L]
+  if (is.na(rate_sheet)) {
+    stop("UCR workbook lacks Table 1 containing the two-hour percentage.")
+  }
+  # The activity table was Table 2 through 2025/26. From 2026/27 Table 2 is
+  # a standardised population rate, while Table 3b is the comparable count of
+  # two-hour UCR referrals. These counts are a volume screen only: their
+  # received-date cohort is not asserted to be the exact Table 1 denominator.
+  activity_sheet <- if ("Table 3b" %in% sheets) {
+    "Table 3b"
+  } else {
+    candidate <- sheets[grepl("(?i)^Table[ _-]*2$", sheets, perl = TRUE)][1L]
+    if (is.na(candidate)) {
+      stop("UCR workbook lacks a provider two-hour referral activity table.")
+    }
+    candidate
+  }
+  rate <- core_read_ucr_wide_table(row, rate_sheet, "proportion")
+  activity <- core_read_ucr_wide_table(row, activity_sheet, "count")
+  activity_method <- if (identical(activity_sheet, "Table 3b")) {
+    "official_ucr_table_3b_two_hour_referrals_received_activity_proxy"
+  } else {
+    "official_ucr_table_2_two_hour_referrals_received_activity_proxy"
+  }
+  activity <- activity[, .(
+    activity_volume_proxy = value,
+    activity_volume_proxy_method = activity_method
+  ), by = .(month, code)]
+  x <- merge(rate, activity, by = c("month", "code"), all.x = TRUE)
   national <- x[
     grepl("(?i)^national$", type, perl = TRUE) |
       grepl("(?i)^national$|^england$", code, perl = TRUE) |
@@ -717,15 +772,27 @@ core_read_ucr_workbook <- function(row) {
     stop("UCR Table 1 contains no national percentage rows.")
   }
   national <- national[, .SD[.N], by = month]
+  provider <- x[
+    grepl("(?i)^provider$", type, perl = TRUE) &
+      nzchar(code) & !grepl("(?i)^unknown$|^national$|^england$", code, perl = TRUE)
+  ]
+  if (nrow(provider)) {
+    provider <- provider[, .SD[.N], by = .(month, code)]
+  }
   list(
     national = core_make_national_rows(
       "ucr_2h", national$month, national$value, NA_real_, NA_real_,
-      national$complete, source, "official_ucr_table_1_two_hour_percentage"
+      national$complete, source, "official_ucr_table_1_two_hour_percentage",
+      national$activity_volume_proxy,
+      national$activity_volume_proxy_method
     ),
-    # Table 1 contains provider percentages but no matching completed-referral
-    # denominator. Without a defensible volume floor, do not issue provider
-    # trajectory signals from small or volatile official percentages.
-    provider = data.table::data.table()
+    provider = core_make_provider_rows(
+      "ucr_2h", provider$month, provider$code, provider$name, provider$value,
+      NA_real_, NA_real_, provider$complete, source,
+      "official_ucr_table_1_two_hour_percentage_with_activity_proxy",
+      provider$activity_volume_proxy,
+      provider$activity_volume_proxy_method
+    )
   )
 }
 
@@ -1604,7 +1671,8 @@ core_complete_provider_panel <- function(x) {
 validate_core_import_panels <- function(national, provider) {
   required <- c(
     "metric_id", "calendar_month", "entity_id", "entity_name", "numerator",
-    "denominator", "value", "complete_submission", "source_method",
+    "denominator", "activity_volume_proxy", "activity_volume_proxy_method",
+    "value", "complete_submission", "source_method",
     "source_file", "source_url", "source_sha256"
   )
   assert_columns(national, required, "core national panel")
@@ -1654,6 +1722,16 @@ validate_core_import_panels <- function(national, provider) {
   if (any(national_complete[metric_id == "ambulance_cat2", value <= 0]) ||
       any(provider_complete[metric_id == "ambulance_cat2", value <= 0])) {
     stop("Category 2 response times must be positive.")
+  }
+  ucr_proxy <- provider_complete[
+    metric_id == "ucr_2h" & is.finite(activity_volume_proxy)
+  ]
+  if (nrow(ucr_proxy) && any(
+    ucr_proxy$activity_volume_proxy < 0 |
+      is.na(ucr_proxy$activity_volume_proxy_method) |
+      !nzchar(ucr_proxy$activity_volume_proxy_method)
+  )) {
+    stop("UCR provider activity proxies must be non-negative and explicitly labelled.")
   }
   invisible(TRUE)
 }

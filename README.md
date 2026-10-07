@@ -110,13 +110,15 @@ source("scripts/19_export_publication_bundle.R")
 source("scripts/20_release_qa.R")
 ```
 
-After the environment has been bootstrapped, use an explicit publication mode. For the
-Monday pre-release forecast:
+After the environment has been bootstrapped, the complete Monday pre-release forecast
+has one entry point:
 
 ```r
-options(nhs.outlook.publication_mode = "forecast")
-source("scripts/18_run_monthly_refresh.R")
+source("R/run_publication.R")
 ```
+
+It defaults to forecast mode, today's issue date and Pilot status, then runs the
+refresh, PDF export, release QA and static website build.
 
 For the Thursday result, start again at discovery so newly published files are found:
 
@@ -125,7 +127,7 @@ options(
   nhs.outlook.publication_mode = "outturn",
   ae.refresh.start_stage = 1
 )
-source("scripts/18_run_monthly_refresh.R")
+source("R/run_publication.R")
 ```
 
 The runner stops at the first failed discovery, schema or QA check. It does not remove
@@ -137,7 +139,7 @@ that numbered stage without repeating earlier work. For example:
 
 ```r
 options(ae.refresh.start_stage = 2)
-source("scripts/18_run_monthly_refresh.R")
+source("R/run_publication.R")
 ```
 
 The option is consumed and cleared immediately, so the following monthly run starts
@@ -153,7 +155,7 @@ options(
   ae.refresh.start_stage = 12,
   ae.core.reuse_unchanged_downloads = TRUE
 )
-source("scripts/18_run_monthly_refresh.R")
+source("R/run_publication.R")
 ```
 
 Do not use that recovery option for a normal monthly refresh, because the normal run

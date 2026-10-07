@@ -42,6 +42,57 @@ coverage <- data.table::rbindlist(list(
 ), use.names = TRUE)
 dir.create("output/qa", recursive = TRUE, showWarnings = FALSE)
 data.table::fwrite(coverage, "output/qa/core_import_coverage.csv")
+
+ucr_provider <- imported$provider[metric_id == "ucr_2h"]
+ucr_provider_coverage <- if (nrow(ucr_provider)) {
+  ucr_provider[, .(
+    panel_rows = .N,
+    providers_in_panel = data.table::uniqueN(entity_id),
+    submitted_provider_rates = sum(complete_submission == TRUE),
+    submitted_rates_with_activity_proxy = sum(
+      complete_submission == TRUE & is.finite(activity_volume_proxy)
+    ),
+    submitted_rates_missing_activity_proxy = sum(
+      complete_submission == TRUE & !is.finite(activity_volume_proxy)
+    ),
+    explicit_missing_submissions = sum(complete_submission == FALSE)
+  ), by = calendar_month]
+} else {
+  data.table::data.table(
+    calendar_month = data.table::as.IDate(character()), panel_rows = integer(),
+    providers_in_panel = integer(), submitted_provider_rates = integer(),
+    submitted_rates_with_activity_proxy = integer(),
+    submitted_rates_missing_activity_proxy = integer(),
+    explicit_missing_submissions = integer()
+  )
+}
+ucr_provider_import_exclusions <- if (nrow(ucr_provider)) {
+  ucr_provider[
+    complete_submission != TRUE | !is.finite(activity_volume_proxy),
+    .(
+      metric_id, calendar_month, entity_id, entity_name,
+      exclusion_reason = data.table::fifelse(
+        complete_submission != TRUE,
+        "provider_rate_not_submitted",
+        "provider_activity_proxy_missing"
+      ),
+      source_file
+    )
+  ]
+} else {
+  data.table::data.table(
+    metric_id = character(), calendar_month = data.table::as.IDate(character()),
+    entity_id = character(), entity_name = character(),
+    exclusion_reason = character(), source_file = character()
+  )
+}
+data.table::fwrite(
+  ucr_provider_coverage, "output/qa/ucr_provider_import_coverage.csv"
+)
+data.table::fwrite(
+  ucr_provider_import_exclusions,
+  "output/qa/ucr_provider_import_exclusions.csv"
+)
 data.table::fwrite(
   imported$cancer_national_reconciliation,
   "output/qa/cancer_national_reconciliation.csv"

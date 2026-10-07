@@ -31,6 +31,25 @@ nhs_outlook_issue_date <- function(default = Sys.Date()) {
   data.table::as.IDate(parsed)
 }
 
+nhs_outlook_publication_status <- function(default = "pilot") {
+  value <- getOption("nhs.outlook.publication_status", default)
+  if (length(value) != 1L || is.na(value)) {
+    stop("Option 'nhs.outlook.publication_status' must be 'pilot' or 'standard'.")
+  }
+  value <- tolower(trimws(as.character(value)))
+  if (!value %in% c("pilot", "standard")) {
+    stop("Option 'nhs.outlook.publication_status' must be 'pilot' or 'standard'.")
+  }
+  value
+}
+
+nhs_outlook_edition_label <- function(edition, status = "pilot") {
+  edition <- match.arg(edition, c("forecast", "outturn"))
+  status <- match.arg(status, c("pilot", "standard"))
+  edition_text <- if (edition == "forecast") "Forecast edition" else "Outturn edition"
+  if (status == "pilot") paste("Pilot", edition_text, sep = " · ") else edition_text
+}
+
 read_key_value_config <- function(path) {
   x <- data.table::fread(path, encoding = "UTF-8")
   assert_columns(x, c("key", "value"), basename(path))

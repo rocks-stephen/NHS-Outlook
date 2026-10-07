@@ -24,7 +24,10 @@ required_files <- c(
   "config/core_model.csv",
   "config/core_qa_reference_values.csv",
   "config/community_service_qa_reference_values.csv",
-  "output/qa/community_waits_national_total_reconciliation.csv"
+  "output/qa/community_waits_national_total_reconciliation.csv",
+  "output/qa/ucr_provider_import_coverage.csv",
+  "output/qa/ucr_provider_import_exclusions.csv",
+  "output/qa/ucr_provider_model_eligibility.csv"
 )
 missing_files <- required_files[!file.exists(required_files)]
 if (length(missing_files)) {
@@ -237,6 +240,59 @@ add_check(
     (nrow(community_band) > 0L && nrow(community_summary) > 0L),
   paste(nrow(community_band), "band rows;", nrow(community_summary), "summary rows."),
   community_summary_path
+)
+
+# UCR provider percentages are published separately from the referral-activity
+# counts used for volume screening. Confirm both are retained and exclusions are
+# explicit rather than silently dropping providers.
+ucr_provider <- provider[metric_id == "ucr_2h"]
+ucr_coverage <- read_csv(
+  "output/qa/ucr_provider_import_coverage.csv", "calendar_month"
+)
+ucr_import_exclusions <- read_csv(
+  "output/qa/ucr_provider_import_exclusions.csv", "calendar_month"
+)
+ucr_model_eligibility <- read_csv(
+  "output/qa/ucr_provider_model_eligibility.csv", "data_through_month"
+)
+add_check(
+  "ucr_provider_import", "ucr_2h", "provider_rates_and_activity_proxy_present",
+  "fatal",
+  nrow(ucr_provider[complete_submission == TRUE]) > 0L &&
+    nrow(ucr_provider[
+      complete_submission == TRUE & is.finite(activity_volume_proxy)
+    ]) > 0L &&
+    nrow(ucr_coverage) > 0L,
+  paste(
+    nrow(ucr_provider[complete_submission == TRUE]), "submitted rate row(s);",
+    nrow(ucr_provider[
+      complete_submission == TRUE & is.finite(activity_volume_proxy)
+    ]), "with activity proxy."
+  ),
+  "data-interim/core/provider_panel.csv"
+)
+add_check(
+  "ucr_provider_import", "ucr_2h", "provider_import_exclusions_are_explicit",
+  "fatal",
+  all(c("entity_id", "calendar_month", "exclusion_reason") %in%
+        names(ucr_import_exclusions)) &&
+    nrow(ucr_coverage) == data.table::uniqueN(ucr_provider$calendar_month),
+  paste(nrow(ucr_import_exclusions), "provider-month exclusion row(s)."),
+  "output/qa/ucr_provider_import_exclusions.csv"
+)
+add_check(
+  "ucr_provider_model", "ucr_2h", "provider_signal_eligibility_is_explicit",
+  "fatal",
+  nrow(ucr_model_eligibility) > 0L &&
+    all(!is.na(ucr_model_eligibility$signal_eligibility_reason)) &&
+    any(ucr_model_eligibility$signal_eligibility_reason == "eligible"),
+  paste(
+    sum(ucr_model_eligibility$signal_eligibility_reason == "eligible"),
+    "eligible;",
+    sum(ucr_model_eligibility$signal_eligibility_reason != "eligible"),
+    "explicitly excluded."
+  ),
+  "output/qa/ucr_provider_model_eligibility.csv"
 )
 add_check(
   "community_service_import", "community_18w",
@@ -621,6 +677,17 @@ add_check(
   },
   "output/performance/overview_manifest.csv"
 )
+manifest_is_pilot <- "publication_status" %in% names(overview_manifest) &&
+  nrow(overview_manifest) == 1L &&
+  overview_manifest$publication_status[1L] == "pilot"
+add_check(
+  "publication", "ALL", "publication_status_is_pilot", "fatal",
+  manifest_is_pilot,
+  if (manifest_is_pilot) "Publication status: pilot." else {
+    "Overview manifest must identify this publication as pilot."
+  },
+  "output/performance/overview_manifest.csv"
+)
 publication_mode <- if (manifest_has_mode) {
   overview_manifest$publication_mode[1L]
 } else {
@@ -744,12 +811,84 @@ if (file.exists(publication_manifest_path)) {
     paste("expected", length(expected_html), "HTML source(s); manifest contains", length(manifested_html)),
     publication_manifest_path
   )
+  if (publication_mode == "forecast") {
+    overview_html_path <-
+      "output/releases/nhs-performance-outlook-forecast-latest.html"
+    overview_html <- paste(
+      readLines(overview_html_path, warn = FALSE, encoding = "UTF-8"),
+      collapse = "\n"
+    )
+    current_rows <- read_csv("output/performance/overview_metric_rows.csv")
+    expected_metric_ids <- c(
+      "ae4h_all", "ambulance_cat2", "rtt_18w", "diagnostics_6w",
+      "cancer_62d", "ucr_2h", "community_18w", "talking_therapies_6w"
+    )
+    detail_links_present <- nrow(current_rows) == 8L && all(vapply(
+      current_rows$deep_dive_file,
+      function(x) grepl(paste0('href="', x, '"'), overview_html, fixed = TRUE),
+      logical(1)
+    ))
+    add_check(
+      "publication", "ALL", "overview_contains_eight_indicators", "fatal",
+      nrow(current_rows) == 8L &&
+        identical(current_rows$metric_id, expected_metric_ids),
+      paste(nrow(current_rows), "indicator row(s):",
+            paste(current_rows$metric_id, collapse = ", ")),
+      "output/performance/overview_metric_rows.csv"
+    )
+    add_check(
+      "publication", "ALL", "overview_html_displays_pilot", "fatal",
+      grepl("Pilot", overview_html, fixed = TRUE),
+      "Pilot label is rendered in the underlying main publication HTML.",
+      overview_html_path
+    )
+    add_check(
+      "publication", "ALL", "overview_has_eight_web_detail_links", "fatal",
+      detail_links_present &&
+        grepl('<th class="detail-head">Detail</th>', overview_html, fixed = TRUE),
+      paste(sum(vapply(
+        current_rows$deep_dive_file,
+        function(x) grepl(paste0('href="', x, '"'), overview_html, fixed = TRUE),
+        logical(1)
+      )), "configured Detail link(s) present."),
+      overview_html_path
+    )
+    add_check(
+      "publication", "community_18w",
+      "community_detail_is_not_classified_as_rtt", "fatal",
+      identical(
+        current_rows[metric_id == "community_18w", deep_dive_file],
+        "community-18-week-outlook-latest.html"
+      ) && identical(
+        current_rows[metric_id == "rtt_18w", deep_dive_file],
+        "rtt-18-week-outlook-latest.html"
+      ),
+      "Community and RTT use distinct metric IDs and detailed output paths.",
+      "output/performance/overview_metric_rows.csv"
+    )
+    add_check(
+      "publication", "ucr_2h", "ucr_detail_is_in_publication_bundle", "fatal",
+      "output/releases/urgent-community-response-outlook-latest.html" %in%
+        manifested_html,
+      "Two-hour UCR detailed forecast is included.", publication_manifest_path
+    )
+    add_check(
+      "publication", "ambulance_cat2",
+      "ambulance_detail_is_in_publication_bundle", "fatal",
+      "output/releases/ambulance-category-2-outlook-latest.html" %in%
+        manifested_html,
+      "Ambulance Category 2 detailed forecast is included.",
+      publication_manifest_path
+    )
+  }
   add_check(
     "publication", "ALL", "manifest_rows_match_publication_mode", "fatal",
     "publication_mode" %in% names(publication_manifest) &&
+      "publication_status" %in% names(publication_manifest) &&
       "artifact_role" %in% names(publication_manifest) &&
       nrow(publication_manifest) > 0L &&
       all(publication_manifest$publication_mode == publication_mode) &&
+      all(publication_manifest$publication_status == "pilot") &&
       all(publication_manifest$edition == publication_mode) &&
       sum(publication_manifest$artifact_role == "overview") == 1L &&
       if (publication_mode == "outturn") {

@@ -9,12 +9,12 @@ analysis process.
    cannot silently replace the forecast that is waiting to be scored:
 
    ```r
-   options(
-     nhs.outlook.publication_mode = "forecast",
-     ae.refresh.start_stage = 1
-   )
-   source("scripts/18_run_monthly_refresh.R")
+   source("R/run_publication.R")
    ```
+
+   This is the single complete-release entry point. It defaults to forecast mode,
+   today's issue date and Pilot status, runs the model/render/export/QA pipeline,
+   and then rebuilds `publication_site` from the current generated outputs.
 
    This freezes the exact published rows in
    `output/performance/latest_published_forecast_rows.csv` and also writes a dated
@@ -38,11 +38,8 @@ model run.
 1. Run a new full discovery after the official release files are available:
 
    ```r
-   options(
-     nhs.outlook.publication_mode = "outturn",
-     ae.refresh.start_stage = 1
-   )
-   source("scripts/18_run_monthly_refresh.R")
+   options(nhs.outlook.publication_mode = "outturn")
+   source("R/run_publication.R")
    ```
 
    Starting at stage 1 matters: it rediscovers publication pages before downloading
@@ -67,9 +64,10 @@ model run.
 5. Publish the outturn overview as an update to the Monday post. Keep the Monday PDF
    available so the sequence is auditable.
 
-For a backdated or reproducible build, also set
-`nhs.outlook.issue_date = "YYYY-MM-DD"`. The runner clears the mode and date after a
-successful refresh, so set the publication mode on every publication run.
+For a backdated or reproducible build, first set
+`options(nhs.outlook.issue_date = "YYYY-MM-DD")`. To resume safely, also set
+`options(ae.refresh.start_stage = 14)` (or another documented stage) before sourcing
+the same entry point. The runner clears publication options after a successful run.
 
 ## Pre-publication checklist
 
@@ -83,6 +81,10 @@ successful refresh, so set the publication mode on every publication run.
   the hand-verified January 2023 musculoskeletal service observation in
   `config/community_service_qa_reference_values.csv` when that month is imported.
 - Read every omission or provider-withheld reason in `output/core/model_status.csv`.
+- For UCR, review `ucr_provider_import_coverage.csv`,
+  `ucr_provider_import_exclusions.csv` and `ucr_provider_model_eligibility.csv`.
+  The published referral activity is used only as a labelled volume screen; it is
+  not treated as the exact denominator of the provider percentage.
 - Check that Latest, Outlook and Actual months are correctly dated.
 - Inspect the method register, model-comparison warnings, forecasts, 80% ranges and
   target labels for implausible values.

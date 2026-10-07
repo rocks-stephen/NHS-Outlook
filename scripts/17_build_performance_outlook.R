@@ -5,6 +5,7 @@ source("R/core_outlook.R")
 
 publication_mode <- nhs_outlook_publication_mode()
 publication_issue_date <- nhs_outlook_issue_date()
+publication_status <- nhs_outlook_publication_status()
 issue_day <- format(as.Date(publication_issue_date), "%Y-%m-%d")
 
 required_files <- c(
@@ -330,7 +331,8 @@ if (publication_mode == "forecast") {
     editorial_commentary = editorial_commentary(
       "forecast", max(forecast_rows$forecast_month)
     ),
-    publication_issue_date = publication_issue_date
+    publication_issue_date = publication_issue_date,
+    publication_status = publication_status
   )
   file.copy(
     dated_path,
@@ -352,7 +354,8 @@ if (publication_mode == "forecast") {
     editorial_commentary = editorial_commentary(
       "outturn", max(outturn_rows$actual_month)
     ),
-    publication_issue_date = publication_issue_date
+    publication_issue_date = publication_issue_date,
+    publication_status = publication_status
   )
   file.copy(
     outturn_path,
@@ -550,6 +553,7 @@ data.table::fwrite(
 data.table::fwrite(data.table::data.table(
   issue_date = issue_day,
   publication_mode = publication_mode,
+  publication_status = publication_status,
   source_forecast_issue_date = if (publication_mode == "outturn") {
     format(as.Date(unique(outturn_rows$publication_issue_date)[1L]), "%Y-%m-%d")
   } else {
