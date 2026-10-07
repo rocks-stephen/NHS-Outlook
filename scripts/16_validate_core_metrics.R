@@ -115,7 +115,8 @@ for (metric in metrics) {
       required_names,
       "provider_next_release_forecast.csv",
       "provider_release_forecast_archive.csv",
-      "provider_ensemble_weights.csv"
+      "provider_ensemble_weights.csv",
+      "provider_fixed_six_month_path.csv"
     )
   }
   required <- file.path(directory, required_names)
@@ -286,11 +287,14 @@ for (metric in metrics) {
       "lower = point - width and upper = point + width, after symmetric logical bounds"
     )
     add_check(
-      metric, "rtt_interval_uses_recent_centered_symmetric_errors",
+      metric, "rtt_interval_uses_recent_symmetric_absolute_errors",
       method_schema_ok &&
-        grepl("centered_symmetric", national$interval_method[1L], fixed = TRUE) &&
+        grepl("symmetric_absolute_error", national$interval_method[1L], fixed = TRUE) &&
+        !grepl("centered_symmetric", national$interval_method[1L], fixed = TRUE) &&
         method$interval_calibration_window_months[1L] == 24L &&
-        grepl("median_removed", method$interval_centering_method[1L], fixed = TRUE),
+        method$interval_residual_center_native[1L] == 0 &&
+        grepl("point_forecast_unchanged", method$interval_centering_method[1L],
+              fixed = TRUE),
       if (method_schema_ok) {
         paste(
           national$interval_method[1L],
@@ -356,6 +360,30 @@ for (metric in metrics) {
           flagged$direction_share >= share & flagged$latest_error_same_direction
       ),
       paste("flagged", nrow(flagged))
+    )
+    fixed_path <- data.table::fread(
+      file.path(directory, "provider_fixed_six_month_path.csv"),
+      encoding = "UTF-8"
+    )
+    signal_window <- as.integer(config_row$signal_window_months[1L])
+    fixed_counts <- fixed_path[, .(
+      months_n = .N,
+      origins_n = data.table::uniqueN(origin_month),
+      evidence_ok = all(
+        forecast_evidence == "historically_simulated_fixed_six_month_path"
+      )
+    ), by = entity_id]
+    add_check(
+      metric, "provider_watch_uses_fixed_six_month_path",
+      nrow(fixed_counts) > 0L &&
+        all(fixed_counts$months_n == signal_window) &&
+        all(fixed_counts$origins_n == 1L) &&
+        all(fixed_counts$evidence_ok) &&
+        all(watchlist[
+          signal_eligibility_reason == "eligible",
+          signal_evidence == "fixed_six_month_path_backtest"
+        ]),
+      paste(nrow(fixed_counts), "provider fixed paths")
     )
     if (metric == "ucr_2h") {
       ucr_schema <- c(

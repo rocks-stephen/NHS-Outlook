@@ -186,11 +186,12 @@ do not validate uncertainty 12 to 31 months ahead.
 
 ## Provider sustained-deviation watchlist
 
-For every provider-month, the model uses the one-month-ahead expectation archived
-before that release. Until enough archived months exist, the equivalent rolling
-pseudo-real-time prediction is used and explicitly labelled. The surprise is:
+The headline provider watch fixes a six-month forecast path at the beginning of
+the latest six-month window. Each subsequent actual is compared with its matching
+month on that unchanged path. The rolling one-month forecasts remain available as
+a QA diagnostic but do not drive the headline signal. The path gap is:
 
-`actual performance - expected performance`
+`actual performance - expectation from the path fixed six months earlier`
 
 A provider is flagged only when all of the following apply over six consecutive
 calendar months:

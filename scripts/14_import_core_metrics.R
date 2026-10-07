@@ -93,6 +93,42 @@ data.table::fwrite(
   ucr_provider_import_exclusions,
   "output/qa/ucr_provider_import_exclusions.csv"
 )
+
+community_provider <- imported$provider[metric_id == "community_18w"]
+community_provider_coverage <- if (nrow(community_provider)) {
+  community_provider[, .(
+    providers_in_panel = data.table::uniqueN(entity_id),
+    complete_provider_submissions = sum(complete_submission == TRUE),
+    incomplete_or_missing_submissions = sum(complete_submission != TRUE)
+  ), by = calendar_month]
+} else {
+  data.table::data.table(
+    calendar_month = data.table::as.IDate(character()),
+    providers_in_panel = integer(), complete_provider_submissions = integer(),
+    incomplete_or_missing_submissions = integer()
+  )
+}
+community_provider_import_exclusions <- data.table::rbindlist(list(
+  community_provider[complete_submission != TRUE, .(
+    metric_id, calendar_month, entity_id, entity_name,
+    exclusion_reason = "provider_submission_incomplete_or_missing", source_file
+  )],
+  imported$community_service_summary[
+    geography_type == "Organisation" & !nzchar(geography_code), .(
+      metric_id = "community_18w", calendar_month,
+      entity_id = NA_character_, entity_name = geography_name,
+      exclusion_reason = "published_organisation_code_unavailable", source_file
+    )
+  ]
+), use.names = TRUE, fill = TRUE)
+data.table::fwrite(
+  community_provider_coverage,
+  "output/qa/community_provider_import_coverage.csv"
+)
+data.table::fwrite(
+  community_provider_import_exclusions,
+  "output/qa/community_provider_import_exclusions.csv"
+)
 data.table::fwrite(
   imported$cancer_national_reconciliation,
   "output/qa/cancer_national_reconciliation.csv"
@@ -127,7 +163,8 @@ data.table::fwrite(
 )
 data.table::fwrite(
   imported$community_service_summary[, .(
-    calendar_month, geography_type, geography_name, source_geography_key,
+    calendar_month, geography_type, geography_code, geography_name,
+    source_geography_key,
     service_group, service_id, service_name, total_waiting_list,
     over_18_weeks_count, within_18_weeks_count,
     within_18_weeks_proportion, published_band_sum,

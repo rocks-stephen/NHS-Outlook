@@ -839,7 +839,8 @@ core_community_wait_band_definition <- function(label) {
 core_empty_community_service_band <- function() {
   data.table::data.table(
     calendar_month = data.table::as.IDate(character()),
-    geography_type = character(), geography_name = character(),
+    geography_type = character(), geography_code = character(),
+    geography_name = character(),
     source_geography_key = character(), service_group = character(),
     service_id = character(), service_name = character(),
     wait_band = character(), wait_band_label = character(),
@@ -852,7 +853,8 @@ core_empty_community_service_band <- function() {
 core_empty_community_service_summary <- function() {
   data.table::data.table(
     calendar_month = data.table::as.IDate(character()),
-    geography_type = character(), geography_name = character(),
+    geography_type = character(), geography_code = character(),
+    geography_name = character(),
     source_geography_key = character(), service_group = character(),
     service_id = character(), service_name = character(),
     total_waiting_list = numeric(), over_18_weeks_count = numeric(),
@@ -918,6 +920,16 @@ core_community_service_sheet <- function(row, sheet) {
     )
   }
   entity_name_column <- entity_name_columns[1L]
+  clean_header <- clean_names_transparent(header)
+  entity_code_columns <- which(
+    clean_header %in% c("organisation_code", "organization_code", "provider_code") &
+      seq_along(clean_header) < min(service_columns)
+  )
+  entity_code_column <- if (length(entity_code_columns) == 1L) {
+    entity_code_columns[1L]
+  } else {
+    NA_integer_
+  }
   marker_candidates <- seq_len(entity_name_column - 1L)
   marker_scores <- vapply(marker_candidates, function(column) {
     sum(!is.na(core_community_geography_type(trimws(m[, column]))))
@@ -928,6 +940,11 @@ core_community_service_sheet <- function(row, sheet) {
   geography_column <- marker_candidates[which.max(marker_scores)]
   data_rows <- seq.int(header_row + 1L, nrow(m))
   geography_name <- trimws(m[data_rows, entity_name_column])
+  geography_code <- if (is.finite(entity_code_column)) {
+    trimws(m[data_rows, entity_code_column])
+  } else {
+    rep("", length(data_rows))
+  }
   geography_marker <- trimws(m[data_rows, geography_column])
   geography_type <- character(length(data_rows))
   current_type <- NA_character_
@@ -946,6 +963,7 @@ core_community_service_sheet <- function(row, sheet) {
     geography_type %in% c("England", "Region", "ICB", "Organisation")
   data_rows <- data_rows[valid_row]
   geography_name <- geography_name[valid_row]
+  geography_code <- geography_code[valid_row]
   geography_type <- geography_type[valid_row]
   pieces <- lapply(service_columns, function(column) {
     service_header <- header[column]
@@ -967,9 +985,15 @@ core_community_service_sheet <- function(row, sheet) {
     data.table::data.table(
       calendar_month = data.table::as.IDate(row$activity_month),
       geography_type = geography_type,
+      geography_code = geography_code,
       geography_name = geography_name,
-      source_geography_key = paste0(
-        tolower(geography_type), "::", core_community_normalise_label(geography_name)
+      source_geography_key = data.table::fifelse(
+        nzchar(geography_code),
+        paste0(tolower(geography_type), "::code::", toupper(geography_code)),
+        paste0(
+          tolower(geography_type), "::name::",
+          core_community_normalise_label(geography_name)
+        )
       ),
       service_group = service_group,
       service_id = paste0(
@@ -994,7 +1018,8 @@ core_community_service_sheet <- function(row, sheet) {
 core_community_service_summary <- function(service_band) {
   if (!nrow(service_band)) return(core_empty_community_service_summary())
   key <- c(
-    "calendar_month", "geography_type", "geography_name", "source_geography_key",
+    "calendar_month", "geography_type", "geography_code", "geography_name",
+    "source_geography_key",
     "service_group", "service_id", "service_name", "source_file", "source_url",
     "source_sha256"
   )
@@ -1061,13 +1086,56 @@ core_community_service_summary <- function(service_band) {
   )]
   wide[, `:=`(
     identity_status = data.table::fifelse(
-      geography_type == "Organisation", "source_name_only_unharmonised",
-      "published_aggregate_name"
+      geography_type == "Organisation" & nzchar(geography_code),
+      "published_provider_code",
+      data.table::fifelse(
+        geography_type == "Organisation", "source_name_only_unharmonised",
+        "published_aggregate_name"
+      )
     ),
     source_method = "community_service_total_less_published_over_18_bands"
   )]
   columns <- names(core_empty_community_service_summary())
   wide[, ..columns]
+}
+
+core_community_provider_rows <- function(service_summary, source) {
+  organisation <- service_summary[
+    geography_type == "Organisation" & nzchar(geography_code)
+  ]
+  if (!nrow(organisation)) return(data.table::data.table())
+  provider <- organisation[, {
+    submitted <- is.finite(total_waiting_list) & total_waiting_list >= 0
+    all_complete <- any(submitted) &&
+      all(complete_submission[submitted] %in% TRUE)
+    denominator_value <- if (any(submitted)) {
+      sum(total_waiting_list[submitted])
+    } else {
+      NA_real_
+    }
+    over_18_value <- if (all_complete) {
+      sum(over_18_weeks_count[submitted])
+    } else {
+      NA_real_
+    }
+    numerator_value <- denominator_value - over_18_value
+    complete_value <- all_complete && is.finite(denominator_value) &&
+      denominator_value > 0 && is.finite(numerator_value) &&
+      numerator_value >= 0 && numerator_value <= denominator_value
+    list(
+      entity_name = core_latest_nonmissing_character(geography_name),
+      numerator = if (complete_value) numerator_value else NA_real_,
+      denominator = if (complete_value) denominator_value else NA_real_,
+      value = if (complete_value) numerator_value / denominator_value else NA_real_,
+      complete_submission = complete_value
+    )
+  }, by = .(calendar_month, entity_id = toupper(geography_code))]
+  core_make_provider_rows(
+    "community_18w", provider$calendar_month, provider$entity_id,
+    provider$entity_name, provider$value, provider$numerator,
+    provider$denominator, provider$complete_submission, source,
+    "community_tables_4_to_4h_provider_total_less_published_over_18_bands"
+  )
 }
 
 core_read_community_18w_workbook <- function(row) {
@@ -1179,15 +1247,14 @@ core_read_community_18w_workbook <- function(row) {
     )
   }
   service_summary <- core_community_service_summary(service_band)
+  provider <- core_community_provider_rows(service_summary, source)
   list(
     national = core_make_national_rows(
       "community_18w", row$activity_month, value, numerator, denominator,
       complete, source,
       paste0("community_table_3_total_less_published_over_18_bands_", source_schema)
     ),
-    # Organisation names are retained in the service panel for mapping and
-    # descriptive QA, but are not promoted to stable provider identifiers.
-    provider = data.table::data.table(),
+    provider = provider,
     community_service_band = service_band,
     community_service_summary = service_summary
   )
@@ -1629,8 +1696,17 @@ core_import_community_waits <- function(manifest) {
   service_summary <- unique(
     service_summary, by = service_summary_key, fromLast = TRUE
   )
+  provider <- data.table::rbindlist(
+    lapply(pieces, `[[`, "provider"), use.names = TRUE, fill = TRUE
+  )
+  if (nrow(provider)) {
+    data.table::setorder(provider, entity_id, calendar_month, source_file)
+    provider <- unique(
+      provider, by = c("entity_id", "calendar_month"), fromLast = TRUE
+    )
+  }
   list(
-    national = national[], provider = data.table::data.table(),
+    national = national[], provider = provider[],
     community_service_band = service_band[],
     community_service_summary = service_summary[],
     failures = {
@@ -1817,6 +1893,10 @@ import_core_metrics <- function(downloaded_manifest) {
   if (nrow(community_import$national)) {
     ni <- ni + 1L
     national_parts[[ni]] <- community_import$national
+  }
+  if (nrow(community_import$provider)) {
+    pi <- pi + 1L
+    provider_parts[[pi]] <- community_import$provider
   }
   if (nrow(community_import$failures)) {
     optional_import_failures[[length(optional_import_failures) + 1L]] <-

@@ -553,12 +553,19 @@ core_forecast_method_record <- function(metric_row, config_row, national_panel,
     interval_definition = if (
       core_config_character(
         config_row, "interval_calibration_method",
-        c("empirical_error_quantiles", "recent_centered_symmetric_absolute_error")
-      ) == "recent_centered_symmetric_absolute_error"
+        c(
+          "empirical_error_quantiles",
+          "recent_centered_symmetric_absolute_error",
+          "recent_symmetric_absolute_error"
+        )
+      ) %in% c(
+        "recent_centered_symmetric_absolute_error",
+        "recent_symmetric_absolute_error"
+      )
     ) {
       paste(
-        "Recent one-step reference-model errors are median-centred and their",
-        "absolute magnitudes set a symmetric predictive range around the point",
+        "Recent one-step reference-model absolute errors set a symmetric",
+        "predictive range around the unchanged point",
         "forecast; logical bounds are applied symmetrically and longer horizons",
         "scale widths by the square root of horizon."
       )
@@ -623,10 +630,18 @@ core_interval_calibration <- function(residuals, empirical_minimum_n,
   z <- as.numeric(residuals[is.finite(residuals)])
   calibration_n <- length(z)
   probabilities <- c(0.025, 0.10, 0.90, 0.975)
-  symmetric <- identical(
+  symmetric <- calibration_method %in% c(
+    "recent_centered_symmetric_absolute_error",
+    "recent_symmetric_absolute_error"
+  )
+  centered_symmetric <- identical(
     calibration_method, "recent_centered_symmetric_absolute_error"
   )
-  residual_center <- if (symmetric && calibration_n) stats::median(z) else 0
+  residual_center <- if (centered_symmetric && calibration_n) {
+    stats::median(z)
+  } else {
+    0
+  }
   if (calibration_n >= empirical_minimum_n) {
     if (symmetric) {
       radii <- stats::quantile(
@@ -635,9 +650,17 @@ core_interval_calibration <- function(residuals, empirical_minimum_n,
       return(list(
         quantiles = c(-radii[2L], -radii[1L], radii[1L], radii[2L]),
         calibration_n = calibration_n,
-        method = "centered_symmetric_absolute_error_empirical",
+        method = if (centered_symmetric) {
+          "centered_symmetric_absolute_error_empirical"
+        } else {
+          "symmetric_absolute_error_empirical"
+        },
         residual_center = residual_center,
-        centering_method = "median_removed_before_absolute_error_calibration"
+        centering_method = if (centered_symmetric) {
+          "median_removed_before_absolute_error_calibration"
+        } else {
+          "none_point_forecast_unchanged"
+        }
       ))
     }
     return(list(
@@ -671,9 +694,17 @@ core_interval_calibration <- function(residuals, empirical_minimum_n,
     return(list(
       quantiles = c(-radii[2L], -radii[1L], radii[1L], radii[2L]),
       calibration_n = calibration_n,
-      method = "centered_symmetric_student_t_predictive_small_sample",
+      method = if (centered_symmetric) {
+        "centered_symmetric_student_t_predictive_small_sample"
+      } else {
+        "symmetric_student_t_predictive_small_sample"
+      },
       residual_center = residual_center,
-      centering_method = "median_removed_before_symmetric_student_t_calibration"
+      centering_method = if (centered_symmetric) {
+        "median_removed_before_symmetric_student_t_calibration"
+      } else {
+        "none_point_forecast_unchanged"
+      }
     ))
   }
   list(
@@ -695,7 +726,11 @@ core_add_intervals <- function(forecast, rolling, metric_row, config_row,
   )
   calibration_method <- core_config_character(
     config_row, "interval_calibration_method",
-    c("empirical_error_quantiles", "recent_centered_symmetric_absolute_error")
+    c(
+      "empirical_error_quantiles",
+      "recent_centered_symmetric_absolute_error",
+      "recent_symmetric_absolute_error"
+    )
   )
   if (nrow(reference_residuals)) {
     latest_target_id <- max(month_id(reference_residuals$target_month))
@@ -747,7 +782,10 @@ core_add_intervals <- function(forecast, rolling, metric_row, config_row,
     quantiles <- selected$quantiles
     scale <- sqrt(out$horizon_months[i])
     point <- out$predicted_value[i]
-    if (calibration_method == "recent_centered_symmetric_absolute_error") {
+    if (calibration_method %in% c(
+      "recent_centered_symmetric_absolute_error",
+      "recent_symmetric_absolute_error"
+    )) {
       radius_80 <- abs(quantiles[3L]) * scale
       radius_95 <- abs(quantiles[4L]) * scale
       if (metric_row$unit[1L] == "proportion") {
@@ -950,6 +988,61 @@ core_surprise_history <- function(rolling, scorecard, config_row) {
   combined[]
 }
 
+core_fixed_six_month_path <- function(panel, rolling, metric_row, config_row) {
+  width <- core_config_integer(config_row, "signal_window_months", 2L)
+  minimum_training <- core_config_integer(
+    config_row, "minimum_training_months", 12L
+  )
+  latest_month <- max(panel$calendar_month)
+  origin_month <- data.table::as.IDate(seq(
+    as.Date(latest_month), by = "-1 month", length.out = width + 1L
+  )[width + 1L])
+  target_months <- data.table::as.IDate(seq(
+    as.Date(origin_month), by = "month", length.out = width + 1L
+  )[-1L])
+  weights <- core_estimate_ensemble_weights(
+    rolling, config_row, before_target = min(target_months)
+  )
+  entities <- unique(panel[
+    calendar_month == latest_month & complete_submission == TRUE &
+      is.finite(value), entity_id
+  ])
+  pieces <- lapply(entities, function(entity) {
+    history <- data.table::copy(panel[entity_id == entity])
+    data.table::setorder(history, calendar_month)
+    train <- core_contiguous_tail(history[calendar_month <= origin_month])
+    if (nrow(train) < minimum_training ||
+        max(train$calendar_month) != origin_month) return(NULL)
+    forecast <- core_predict_model_set(
+      train, target_months, metric_row, config_row,
+      ensemble_weights = weights
+    )[model == "reference_ensemble" & is.finite(predicted_value)]
+    actual <- history[
+      calendar_month %in% target_months & complete_submission == TRUE &
+        is.finite(value),
+      .(target_month = calendar_month, actual_value = value)
+    ]
+    out <- merge(
+      forecast[, .(target_month = forecast_month, predicted_value)],
+      actual, by = "target_month"
+    )
+    if (nrow(out) != width) return(NULL)
+    out[, `:=`(
+      metric_id = metric_row$metric_id[1L],
+      entity_id = entity,
+      entity_name = core_latest_nonmissing_character(train$entity_name),
+      origin_month = origin_month,
+      error_native = actual_value - predicted_value,
+      forecast_evidence = "historically_simulated_fixed_six_month_path"
+    )]
+    out
+  })
+  out <- data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
+  if (!nrow(out)) return(data.table::data.table())
+  data.table::setorder(out, entity_id, target_month)
+  out[]
+}
+
 core_provider_signals <- function(surprises, provider_panel, metric_row, config_row) {
   window <- core_config_integer(config_row, "signal_window_months", 2L)
   threshold <- core_config_number(config_row, "signal_materiality_native", 0)
@@ -1054,7 +1147,11 @@ core_provider_signals <- function(surprises, provider_panel, metric_row, config_
     } else {
       "no_sustained_signal"
     }
-    evidence <- if (all(
+    evidence <- if (all(grepl(
+      "fixed_six_month_path", history$forecast_evidence, fixed = TRUE
+    ))) {
+      "fixed_six_month_path_backtest"
+    } else if (all(
       history$forecast_evidence == "genuine_release_vintage"
     )) {
       "genuine_release_vintages"

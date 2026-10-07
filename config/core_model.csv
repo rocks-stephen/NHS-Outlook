@@ -1,8 +1,8 @@
 metric_id,forecast_end_month,minimum_training_months,backtest_months,recent_trend_months,drift_comparison_months,drift_damping,trend_damping,seasonal_change_years,ensemble_weight_minimum_months,ensemble_equal_weight_shrinkage,minimum_ensemble_components,minimum_interval_residuals,minimum_parametric_interval_residuals,interval_calibration_months,interval_calibration_method,forecast_reversal_window_months,forecast_reversal_threshold_native,signal_window_months,signal_materiality_native,signal_direction_share,minimum_provider_denominator,release_forecast_version,current_era_start
-rtt_18w,2029-03-01,24,36,36,12,0.8,0.85,5,6,0.5,2,12,8,24,recent_centered_symmetric_absolute_error,3,0.02,6,0.02,0.8333333,100,rtt_18w_v3,2023-04-01
+rtt_18w,2029-03-01,24,36,36,12,0.8,0.85,5,6,0.5,2,12,8,24,recent_symmetric_absolute_error,3,0.02,6,0.02,0.8333333,100,rtt_18w_v4,2023-04-01
 diagnostics_6w,2029-03-01,24,36,36,12,0.8,0.85,5,6,0.5,2,12,8,36,empirical_error_quantiles,3,0.02,6,0.02,0.8333333,100,diagnostics_6w_v2,2023-04-01
 cancer_62d,2029-03-01,24,24,24,12,0.8,0.85,5,6,0.5,2,12,8,24,empirical_error_quantiles,3,0.02,6,0.03,0.8333333,50,cancer_62d_v2,2023-10-01
 ambulance_cat2,2029-03-01,36,36,36,12,0.8,0.85,5,6,0.5,2,12,8,36,empirical_error_quantiles,3,3.0,6,3.0,0.8333333,0,ambulance_cat2_v2,2018-08-01
 ucr_2h,2029-03-01,18,18,24,6,0.8,0.85,5,6,0.5,2,12,8,18,empirical_error_quantiles,3,0.03,6,0.05,0.8333333,20,ucr_2h_v3,2022-04-01
-community_18w,2029-03-01,18,12,24,6,0.8,0.85,5,6,0.5,2,12,8,12,empirical_error_quantiles,3,0.03,6,0.04,0.8333333,20,community_18w_v2,2022-10-01
+community_18w,2029-03-01,18,12,24,6,0.8,0.85,5,6,0.5,2,12,8,12,empirical_error_quantiles,3,0.03,6,0.04,0.8333333,20,community_18w_v3,2023-08-01
 talking_therapies_6w,2029-03-01,36,36,36,12,0.8,0.85,5,6,0.5,2,12,8,36,empirical_error_quantiles,3,0.02,6,0.03,0.8333333,20,talking_therapies_6w_v2,2015-01-01

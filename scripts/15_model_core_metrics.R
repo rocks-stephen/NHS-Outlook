@@ -229,6 +229,7 @@ for (metric_index in seq_len(nrow(core_metrics))) {
   provider_next <- data.table::data.table()
   provider_weights <- data.table::data.table()
   surprises <- data.table::data.table()
+  fixed_path <- data.table::data.table()
   watchlist <- core_empty_provider_watchlist()
   provider_reference_residuals <- 0L
   provider_status_reason <- "Provider trajectory watch is disabled for this measure."
@@ -303,11 +304,18 @@ for (metric_index in seq_len(nrow(core_metrics))) {
     surprises <- core_surprise_history(
       provider_rolling, provider_scorecard, config_row
     )
+    fixed_path <- core_fixed_six_month_path(
+      provider, provider_rolling, metric_row, config_row
+    )
     signals <- core_provider_signals(
-      surprises, provider, metric_row, config_row
+      fixed_path, provider, metric_row, config_row
     )
     watchlist <- core_provider_watchlist(signals, provider, provider_next)
-    provider_status_reason <- "Sufficient national and provider history."
+    provider_status_reason <- paste0(
+      "Actual performance is compared with the monthly path forecast six ",
+      "months earlier. The displayed figure is the average gap across those ",
+      "six months."
+    )
   }
 
   if (metric_id_value == "ucr_2h") {
@@ -331,6 +339,31 @@ for (metric_index in seq_len(nrow(core_metrics))) {
     dir.create("output/qa", recursive = TRUE, showWarnings = FALSE)
     data.table::fwrite(
       ucr_eligibility, "output/qa/ucr_provider_model_eligibility.csv"
+    )
+  }
+
+  if (metric_id_value == "community_18w") {
+    community_eligibility <- if (nrow(watchlist)) {
+      watchlist[, .(
+        metric_id, entity_id, entity_name, data_through_month,
+        signal_eligibility_reason, signal_months_n, volume_measure,
+        minimum_volume_in_signal_window, minimum_required_volume,
+        latest_value, latest_denominator, signal
+      )]
+    } else {
+      data.table::data.table(
+        metric_id = character(), entity_id = character(), entity_name = character(),
+        data_through_month = data.table::as.IDate(character()),
+        signal_eligibility_reason = character(), signal_months_n = integer(),
+        volume_measure = character(), minimum_volume_in_signal_window = numeric(),
+        minimum_required_volume = numeric(), latest_value = numeric(),
+        latest_denominator = numeric(), signal = character()
+      )
+    }
+    dir.create("output/qa", recursive = TRUE, showWarnings = FALSE)
+    data.table::fwrite(
+      community_eligibility,
+      "output/qa/community_provider_model_eligibility.csv"
     )
   }
 
@@ -363,6 +396,9 @@ for (metric_index in seq_len(nrow(core_metrics))) {
   )
   write_optional_core_output(
     surprises, file.path(metric_dir, "provider_release_surprise_history.csv")
+  )
+  write_optional_core_output(
+    fixed_path, file.path(metric_dir, "provider_fixed_six_month_path.csv")
   )
   data.table::fwrite(watchlist, file.path(metric_dir, "provider_latest_watchlist.csv"))
   data.table::fwrite(

@@ -27,7 +27,10 @@ required_files <- c(
   "output/qa/community_waits_national_total_reconciliation.csv",
   "output/qa/ucr_provider_import_coverage.csv",
   "output/qa/ucr_provider_import_exclusions.csv",
-  "output/qa/ucr_provider_model_eligibility.csv"
+  "output/qa/ucr_provider_model_eligibility.csv",
+  "output/qa/community_provider_import_coverage.csv",
+  "output/qa/community_provider_import_exclusions.csv",
+  "output/qa/community_provider_model_eligibility.csv"
 )
 missing_files <- required_files[!file.exists(required_files)]
 if (length(missing_files)) {
@@ -437,12 +440,44 @@ for (i in seq_len(nrow(community_service_references))) {
     "config/community_service_qa_reference_values.csv"
   )
 }
+community_provider <- provider[metric_id == "community_18w"]
+community_provider_coverage <- read_csv(
+  "output/qa/community_provider_import_coverage.csv", "calendar_month"
+)
+community_provider_exclusions <- read_csv(
+  "output/qa/community_provider_import_exclusions.csv", "calendar_month"
+)
+community_model_eligibility <- read_csv(
+  "output/qa/community_provider_model_eligibility.csv", "data_through_month"
+)
 add_check(
-  "community_service_import", "community_18w",
-  "name_only_organisations_not_used_as_provider_ids", "fatal",
-  !any(provider$metric_id == "community_18w"),
-  "Organisation-by-service rows remain in the separate unharmonised service panel.",
-  community_summary_path
+  "community_provider_import", "community_18w",
+  "published_provider_codes_used_and_name_only_rows_excluded", "fatal",
+  nrow(community_provider[complete_submission == TRUE]) > 0L &&
+    all(grepl("^[A-Za-z0-9]+$", community_provider$entity_id)) &&
+    nrow(community_provider_coverage) > 0L &&
+    all(c("exclusion_reason", "calendar_month") %in%
+          names(community_provider_exclusions)),
+  paste(
+    nrow(community_provider[complete_submission == TRUE]),
+    "complete coded provider-month row(s);",
+    nrow(community_provider_exclusions), "explicit exclusion row(s)."
+  ),
+  "output/qa/community_provider_import_coverage.csv"
+)
+add_check(
+  "community_provider_model", "community_18w",
+  "provider_signal_eligibility_is_explicit", "fatal",
+  nrow(community_model_eligibility) > 0L &&
+    all(!is.na(community_model_eligibility$signal_eligibility_reason)) &&
+    any(community_model_eligibility$signal_eligibility_reason == "eligible"),
+  paste(
+    sum(community_model_eligibility$signal_eligibility_reason == "eligible"),
+    "eligible;",
+    sum(community_model_eligibility$signal_eligibility_reason != "eligible"),
+    "explicitly excluded."
+  ),
+  "output/qa/community_provider_model_eligibility.csv"
 )
 
 optional_path <- "output/qa/core_optional_source_import_failures.csv"

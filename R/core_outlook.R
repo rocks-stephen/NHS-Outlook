@@ -186,13 +186,13 @@ core_signal_rows_html <- function(watchlist, signal_value, metric_row, top_n = 3
     performance_html_escape(z$entity_name[i]), '</div><div class="provider-context">Latest ',
     performance_format_value(z$latest_value[i], metric_row$unit[1L], metric_row$digits[1L]),
     ' · ', z$signal_months_n[i],
-    ' consecutive releases assessed</div><div class="provider-evidence">',
+    ' months compared with a path fixed six months earlier</div><div class="provider-evidence">',
     gsub("_", " ", z$signal_evidence[i], fixed = TRUE),
     '</div></div><div class="provider-gap ', css, '"><strong>',
     performance_format_difference(
       abs(z$favourable_gap_native[i]), metric_row$unit[1L],
       metric_row$digits[1L]
-    ), '</strong><span>six-month gap</span></div></div>'
+    ), '</strong><span>average gap from fixed path</span></div></div>'
   ), character(1)), collapse = "")
 }
 
