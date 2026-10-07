@@ -1,0 +1,230 @@
+core_month_lookup <- c(
+  jan = 1L, january = 1L, feb = 2L, february = 2L,
+  mar = 3L, march = 3L, apr = 4L, april = 4L,
+  may = 5L, jun = 6L, june = 6L, jul = 7L, july = 7L,
+  aug = 8L, august = 8L, sep = 9L, sept = 9L, september = 9L,
+  oct = 10L, october = 10L, nov = 11L, november = 11L,
+  dec = 12L, december = 12L
+)
+
+core_parse_activity_month <- function(x) {
+  z <- collapse_space(as.character(x))
+  pattern <- paste0(
+    "(?i)\\b(", paste(names(core_month_lookup), collapse = "|"),
+    ")[[:space:]_/-]*('?)([0-9]{2}|20[0-9]{2})\\b"
+  )
+  matches <- regexec(pattern, z, perl = TRUE)
+  pieces <- regmatches(z, matches)
+  out <- rep(as.Date(NA), length(z))
+  for (i in seq_along(pieces)) {
+    if (length(pieces[[i]]) < 4L) next
+    month_value <- unname(core_month_lookup[[tolower(pieces[[i]][2L])]])
+    year_text <- pieces[[i]][4L]
+    year_value <- as.integer(year_text)
+    if (nchar(year_text) == 2L) year_value <- 2000L + year_value
+    out[i] <- as.Date(sprintf("%04d-%02d-01", year_value, month_value))
+  }
+  data.table::as.IDate(out)
+}
+
+core_page_overlaps_start <- function(link_text, source_url, start_month) {
+  z <- paste(link_text, source_url)
+  match <- regexec("(20[0-9]{2})[-/](?:[0-9]{2}|20[0-9]{2})", z, perl = TRUE)
+  pieces <- regmatches(z, match)[[1L]]
+  if (length(pieces) < 2L) return(TRUE)
+  fy_start <- as.integer(pieces[2L])
+  page_last <- as.Date(sprintf("%04d-03-01", fy_start + 1L))
+  page_last >= as.Date(start_month)
+}
+
+core_revision_priority <- function(x) {
+  data.table::fcase(
+    grepl("(?i)\\bfinal\\b", x, perl = TRUE), 1L,
+    grepl("(?i)corrected|revised|new ICB", x, perl = TRUE), 2L,
+    grepl("(?i)provisional", x, perl = TRUE), 3L,
+    default = 4L
+  )
+}
+
+discover_one_core_source <- function(spec, user_agent) {
+  start_month <- data.table::as.IDate(spec$start_month)
+  index_links <- fetch_html_links(spec$index_url, user_agent)
+  page_pattern <- trimws(spec$page_link_pattern)
+  if (nzchar(page_pattern)) {
+    page_candidates <- index_links[
+      grepl(page_pattern, paste(link_text, source_url), perl = TRUE)
+    ]
+    page_candidates[, keep_page___ := vapply(
+      seq_len(.N),
+      function(i) core_page_overlaps_start(
+        link_text[i], source_url[i], start_month
+      ),
+      logical(1)
+    )]
+    publication_pages <- unique(page_candidates[
+      keep_page___ == TRUE,
+      .(publication_page = source_url, publication_page_title = link_text)
+    ])
+    if (!nrow(publication_pages)) {
+      stop("No publication pages matched for ", spec$metric_id, " / ", spec$dataset_role, ".")
+    }
+  } else {
+    publication_pages <- data.table::data.table(
+      publication_page = spec$index_url,
+      publication_page_title = spec$metric_id
+    )
+  }
+
+  links <- data.table::rbindlist(lapply(seq_len(nrow(publication_pages)), function(i) {
+    out <- fetch_html_links(publication_pages$publication_page[i], user_agent)
+    out[, publication_page_title := publication_pages$publication_page_title[i]]
+    out
+  }), use.names = TRUE, fill = TRUE)
+  formats <- trimws(strsplit(spec$format_order, ",", fixed = TRUE)[[1L]])
+  links[, source_format := file_extension_from_url(source_url)]
+  links <- unique(links[
+    grepl(spec$file_link_pattern, link_text, perl = TRUE) &
+      source_format %in% formats,
+    .(link_text, source_url, source_format, publication_page,
+      publication_page_title)
+  ], by = "source_url")
+  if (!nrow(links)) {
+    stop("No source files matched for ", spec$metric_id, " / ", spec$dataset_role, ".")
+  }
+  links[, `:=`(
+    metric_id = spec$metric_id,
+    dataset_role = spec$dataset_role,
+    selection_mode = spec$selection_mode,
+    # Some NHS England links have generic labels such as "Full CSV data file"
+    # or "Monthly Combined CSV".  The activity month is then carried by the
+    # publication-page title or file URL rather than the link label itself.
+    activity_month = core_parse_activity_month(paste(
+      link_text, publication_page_title, source_url
+    )),
+    revision_label = extract_revision_label(link_text),
+    revision_priority = core_revision_priority(link_text),
+    format_priority = match(source_format, formats),
+    discovered_at_utc = format(Sys.time(), tz = "UTC", format = "%Y-%m-%dT%H:%M:%SZ"),
+    selected = FALSE,
+    selection_reason = NA_character_
+  )]
+
+  if (spec$selection_mode == "monthly") {
+    links <- links[!is.na(activity_month) & activity_month >= start_month]
+    if (!nrow(links)) {
+      stop("No monthly files at or after ", start_month, " for ", spec$metric_id, ".")
+    }
+    data.table::setorder(
+      links, activity_month, revision_priority, format_priority, source_url
+    )
+    links[, selected := seq_len(.N) == 1L, by = activity_month]
+    links[selected == TRUE, selection_reason := paste0(
+      "Preferred publication and format for ", format(activity_month, "%B %Y")
+    )]
+  } else if (spec$selection_mode == "latest_time_series") {
+    dated <- links[!is.na(activity_month)]
+    if (nrow(dated)) {
+      data.table::setorder(
+        dated, -activity_month, revision_priority, format_priority, source_url
+      )
+      chosen <- dated$source_url[1L]
+    } else {
+      data.table::setorder(links, revision_priority, format_priority, source_url)
+      chosen <- links$source_url[1L]
+    }
+    links[source_url == chosen, `:=`(
+      selected = TRUE,
+      selection_reason = "Latest available official time-series file"
+    )]
+  } else {
+    stop("Unknown core source selection mode: ", spec$selection_mode)
+  }
+  links[]
+}
+
+discover_core_sources <- function(source_config, user_agent) {
+  required <- c(
+    "metric_id", "dataset_role", "index_url", "page_link_pattern",
+    "file_link_pattern", "selection_mode", "format_order", "start_month"
+  )
+  assert_columns(source_config, required, "core source config")
+  inventory <- data.table::rbindlist(lapply(seq_len(nrow(source_config)), function(i) {
+    discover_one_core_source(source_config[i], user_agent)
+  }), use.names = TRUE, fill = TRUE)
+  inventory[, source_id := sprintf(
+    "%s_%s_%s_%03d",
+    metric_id,
+    dataset_role,
+    data.table::fifelse(
+      is.na(activity_month), "undated", format(activity_month, "%Y_%m")
+    ),
+    seq_len(.N)
+  )]
+  data.table::setcolorder(inventory, c(
+    "source_id", "metric_id", "dataset_role", "selection_mode",
+    "activity_month", "source_format", "link_text", "revision_label",
+    "publication_page", "publication_page_title", "source_url",
+    "discovered_at_utc", "selected", "selection_reason",
+    "revision_priority", "format_priority"
+  ))
+  selected <- inventory[selected == TRUE]
+  for (i in seq_len(nrow(source_config))) {
+    spec <- source_config[i]
+    z <- selected[
+      metric_id == spec$metric_id & dataset_role == spec$dataset_role
+    ]
+    if (spec$selection_mode == "latest_time_series" && nrow(z) != 1L) {
+      stop("Expected one selected time-series file for ", spec$metric_id, ".")
+    }
+    if (spec$selection_mode == "monthly" && anyDuplicated(z$activity_month)) {
+      stop("Duplicate selected months for ", spec$metric_id, ".")
+    }
+  }
+  data.table::setorder(inventory, metric_id, dataset_role, activity_month, source_url)
+  data.table::setorder(selected, metric_id, dataset_role, activity_month)
+  list(link_inventory = inventory[], selected_manifest = selected[])
+}
+
+download_core_source_row <- function(row, user_agent, raw_root = "data-raw/nhse-core") {
+  temporary <- tempfile(fileext = paste0(".", row$source_format))
+  on.exit(if (file.exists(temporary)) unlink(temporary), add = TRUE)
+  handle <- curl::new_handle(useragent = user_agent, followlocation = TRUE)
+  curl::curl_download(row$source_url, temporary, quiet = TRUE, handle = handle)
+  if (!file.exists(temporary) || file.info(temporary)$size <= 0) {
+    stop("Downloaded source is empty: ", row$source_url)
+  }
+  hash <- sha256_file(temporary)
+  destination_directory <- file.path(raw_root, row$metric_id, row$dataset_role)
+  dir.create(destination_directory, recursive = TRUE, showWarnings = FALSE)
+  month_prefix <- if (is.na(row$activity_month)) {
+    "undated"
+  } else {
+    format(row$activity_month, "%Y-%m")
+  }
+  source_name <- safe_url_basename(
+    row$source_url, row$source_id, row$source_format
+  )
+  destination <- file.path(
+    destination_directory,
+    paste0(month_prefix, "__", substr(hash, 1L, 12L), "__", source_name)
+  )
+  if (!file.exists(destination) && !file.copy(temporary, destination)) {
+    stop("Could not preserve downloaded source at ", destination)
+  }
+  row[, `:=`(
+    local_path = destination,
+    sha256 = hash,
+    file_size_bytes = file.info(destination)$size,
+    downloaded_at_utc = format(Sys.time(), tz = "UTC", format = "%Y-%m-%dT%H:%M:%SZ"),
+    is_current = TRUE
+  )]
+  row[]
+}
+
+download_core_sources <- function(selected_manifest, user_agent,
+                                  raw_root = "data-raw/nhse-core") {
+  if (!nrow(selected_manifest)) stop("Core source manifest is empty.")
+  data.table::rbindlist(lapply(seq_len(nrow(selected_manifest)), function(i) {
+    download_core_source_row(data.table::copy(selected_manifest[i]), user_agent, raw_root)
+  }), use.names = TRUE, fill = TRUE)
+}

@@ -1,0 +1,7 @@
+key,value,notes
+main_index_url,https://www.england.nhs.uk/statistics/statistical-work-areas/ae-waiting-times-and-activity/,Start here; annual publication pages and the current national workbook are discovered rather than hard-coded
+provider_start_month,2015-06-01,First genuine monthly provider collection; earlier provider publications are weekly
+provider_format_order,"xls,xlsx",Workbooks preserve explicit dashes/missing CRS performance cells that some CSV files encode as zero
+download_national,TRUE,Download the latest England monthly performance workbook
+download_provider,TRUE,Download one current provider workbook for every available month
+user_agent,NHS-Type1-AE-reproducible-research/0.2 (contact: local project owner),Identification sent with automated requests; edit to add an appropriate contact if publishing the scraper

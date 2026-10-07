@@ -1,0 +1,20 @@
+key,value,notes
+forecast_end_month,2029-03-01,Exploratory provider projection end matching the national forecast
+minimum_training_months,24,Minimum submitted months before a provider forecast is produced
+glm_window_months,36,Recent window for count-weighted seasonal trend model
+drift_comparison_months,12,Recent year-on-year logit changes used for provider drift
+drift_damping,0.8,Each additional forecast year's drift is 80 percent of the previous year
+current_era_start,2023-06-01,First month after the CRS exclusion period
+reference_model,provider_ensemble,Equal average of available seasonal-naive damped-drift and recent count-trend predictions
+candidate_models,"seasonal_naive,seasonal_mean_3y,seasonal_drift_damped,count_glm_trend_recent,provider_ensemble",Provider models retained in rolling evaluation
+minimum_ensemble_components,2,Minimum successful components required for the provider ensemble
+minimum_provider_interval_residuals,18,Use provider-specific current-era one-step residuals from this count
+minimum_pooled_interval_residuals,100,Minimum pooled current-era residuals for interval fallback
+persistent_window_months,6,Months used to identify a sustained departure from trajectory
+persistent_materiality_pp,2.0,Minimum absolute six-month mean gap from own trajectory
+persistent_direction_share,0.8333333,At least five of six monthly errors must point in the same direction
+statistical_calibration_months,36,Prior provider six-month means retained for empirical thresholds
+minimum_statistical_windows,12,Minimum prior six-month means before statistical unusualness is assessed
+chart_recent_months,24,Actual and expected months shown for flagged provider trajectories
+chart_top_n,12,Maximum above and below trajectory providers in watchlist charts
+release_forecast_version,provider_all_ae4h_v1,All-types metric version retained in genuine pre-release provider forecast archive

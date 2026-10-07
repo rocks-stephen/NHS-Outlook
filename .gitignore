@@ -1,0 +1,11 @@
+.Rproj.user
+.Rhistory
+.RData
+.Renviron
+renv/library/
+renv/staging/
+data-raw/nhse/
+data-raw/nhse-core/
+data-interim/
+data/
+output/

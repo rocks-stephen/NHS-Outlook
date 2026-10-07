@@ -1,0 +1,4 @@
+metric_id,calendar_month,expected_value,tolerance,severity,source_note
+ucr_2h,2022-04-01,0.789988151658768,0.0000000001,warning,"Official UCR Table 1 national row, April 2022"
+community_18w,2023-01-01,0.777770305369003,0.0000000001,warning,"Official community waits Table 3 England row: (862432 - 167153 - 24505) / 862432"
+talking_therapies_6w,2023-05-01,0.9,0.0000000001,warning,"Official Talking Therapies waiting-times chart, May 2023"

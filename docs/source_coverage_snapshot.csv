@@ -1,0 +1,14 @@
+financial_year,publication_page_months,workbook_links,csv_links,total_relevant_links,selected_provider_workbooks,inspection_date,notes
+2015-16,10,10,0,10,10,2026-08-12,Monthly collection starts June 2015
+2016-17,12,12,0,12,12,2026-08-12,Workbook only
+2017-18,12,12,0,12,12,2026-08-12,Workbook only
+2018-19,12,12,12,24,12,2026-08-12,Workbook preferred; CSV retained in inventory
+2019-20,12,12,12,24,12,2026-08-12,CRS begins May 2019
+2020-21,12,12,12,24,12,2026-08-12,Booked-appointment definition change August 2020
+2021-22,12,12,11,23,12,2026-08-12,One month has no CSV alternative on the page
+2022-23,12,12,12,24,12,2026-08-12,Workbook preferred
+2023-24,12,12,12,24,12,2026-08-12,CRS ends after May 2023
+2024-25,12,12,12,24,12,2026-08-12,Workbook preferred
+2025-26,12,12,12,24,12,2026-08-12,Workbook preferred
+2026-27,3,3,3,6,3,2026-08-12,Latest activity month June 2026 at inspection
+TOTAL,133,133,98,231,133,2026-08-12,Plus one selected national time-series workbook covering 188 months

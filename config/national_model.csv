@@ -1,0 +1,26 @@
+key,value,notes
+forecast_end_month,2029-03-01,End of NHS financial year 2028/29
+minimum_training_months,72,Six annual cycles before the first rolling origin
+maximum_backtest_horizon,31,Matches August 2026 to March 2029 forecast horizon
+current_era_start,2023-06-01,First month after the CRS exclusion period
+selection_target_start,2025-06-01,Allows every reference component at least twelve current-era training months for 12-month forecasts
+selection_horizons,"1,3,6,12",Primary recent-period comparison horizons
+pre_crs_season_start,2015-06-01,First actual monthly collection month
+pre_crs_season_end,2019-04-01,Last full-comparability month before CRS exclusions
+minimum_current_months,12,Minimum current-era observations for the shared-season current-trend model
+drift_comparison_months,12,Number of recent year-on-year logit changes used to estimate annual drift
+drift_damping,0.8,Each additional forecast year's drift is 80 percent of the previous year's drift
+materiality_threshold_pp,1.0,Review gate: absolute difference in percentage points regarded as practically material
+persistent_direction_share,0.6666667,At least two-thirds of months must point in the same direction
+statistical_calibration_months,24,Prior one-step residuals used to assess unusualness where available
+minimum_statistical_residuals,12,Minimum prior residual values before a statistical unusualness flag is calculated
+minimum_interval_residuals,20,Minimum residual count before a horizon-specific empirical interval is used
+target_performance,0.85,Policy comparison line; not imposed on any model
+prior_target_month,2026-03-01,Operational recovery-plan milestone month
+prior_target_performance,0.78,Operational recovery-plan milestone; shown for historical context
+intermediate_target_month,2027-03-01,Medium Term Planning Framework intermediate milestone month
+intermediate_target_performance,0.82,Medium Term Planning Framework intermediate milestone
+final_target_start_month,2028-04-01,Start of the 2028/29 financial year final-target period
+reference_model,reference_ensemble,Equal-weight seasonal-naive damped-drift and shared-season current-trend projection
+candidate_models,"seasonal_naive,seasonal_mean_3y,seasonal_drift_damped,count_glm_trend_36,count_glm_trend_60,count_glm_trend_all,dynamic_ar1_trend_84,shared_season_current_trend,reference_ensemble",Models included in rolling evaluation and final forecasts
+release_forecast_version,national_all_ae4h_v1,All-types metric version retained in the genuine pre-release forecast archive

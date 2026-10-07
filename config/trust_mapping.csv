@@ -1,0 +1,2 @@
+mapping_rule_id,source_org_code,source_org_name,effective_from,effective_to,analysis_trust_id,analysis_trust_name,rule_type,aggregation_group,evidence_url,rationale,review_status,reviewer,review_date
+TEMPLATE,,,,,,,,,,,pending,,
