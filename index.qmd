@@ -1,0 +1,92 @@
+---
+title: "NHS Performance Outlook"
+subtitle: "Independent forecasts of NHS performance in England"
+format:
+  html:
+    theme: cosmo
+    toc: false
+    embed-resources: true
+    link-external-newwindow: true
+---
+
+<div style="
+display:inline-block;
+border:1px solid #777;
+border-radius:4px;
+padding:4px 9px;
+font-size:12px;
+font-weight:600;
+letter-spacing:1px;
+margin-bottom:10px;
+">PILOT</div>
+
+<p style='color:#666;'>Updated 7 October 2026</p>
+
+A forward-looking view of key NHS performance measures, showing what the latest data imply for the next release.
+
+## NHS Performance Outlook
+
+The table below summarises the latest position and our expectation for the next NHS performance release.
+
+> Headline forecast data will appear here once `forecast_summary.csv` is produced by the forecasting pipeline.
+
+**[Download the NHS Performance Outlook →](forecasts/2026-10-07/nhs-performance-outlook-forecast-2026-10-07.pdf)**
+
+### How to read the outlook
+
+**Latest** is the most recently published performance.
+
+**Next forecast** is the central estimate for the next release.
+
+**Forecast range** reflects uncertainty based on historical forecast performance.
+
+**Actual** is filled in once the corresponding NHS data are published.
+
+---
+
+## Detailed forecasts
+
+The detailed forecasts show recent trends, the modelled outlook, uncertainty and indicator-specific methodology.
+
+### A&E four-hour performance
+
+[View detailed forecast →](forecasts/2026-10-07/ae-four-hour-outlook-forecast-2026-10-07.pdf)
+
+### A&E four-hour performance
+
+[View detailed forecast →](forecasts/2026-10-07/ambulance-category-2-outlook-forecast-2026-10-07.pdf)
+
+### RTT 18-week performance
+
+[View detailed forecast →](forecasts/2026-10-07/rtt-18-week-outlook-forecast-2026-10-07.pdf)
+
+### Community waits within 18 weeks
+
+[View detailed forecast →](forecasts/2026-10-07/community-18-week-outlook-forecast-2026-10-07.pdf)
+
+### Diagnostic waiting times
+
+[View detailed forecast →](forecasts/2026-10-07/diagnostics-six-week-outlook-forecast-2026-10-07.pdf)
+
+### Cancer 62-day performance
+
+[View detailed forecast →](forecasts/2026-10-07/cancer-62-day-outlook-forecast-2026-10-07.pdf)
+
+### NHS Talking Therapies
+
+[View detailed forecast →](forecasts/2026-10-07/talking-therapies-six-week-outlook-forecast-2026-10-07.pdf)
+
+### Urgent Community Response Outlook Forecast 2026 10 07
+
+[View detailed forecast →](forecasts/2026-10-07/urgent-community-response-outlook-forecast-2026-10-07.pdf)
+
+
+---
+
+## About
+
+These are statistical forecasts, not NHS targets. They describe expected performance based on the information available when each forecast was produced.
+
+Forecasts are produced before the corresponding NHS performance data are released, allowing subsequent performance to be compared with the prior expectation.
+
+**Pilot.** The methods, presentation and range of indicators are being tested and may change as the publication develops.
