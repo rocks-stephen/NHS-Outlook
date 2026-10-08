@@ -215,6 +215,13 @@ if (nrow(scored)) {
     forecast_method = forecast_method,
     forecast_components = forecast_components
   )
+  if (identical(getOption("nhs.outlook.publication_mode"), "outturn")) {
+    file.copy(
+      file.path(output_dir, result_filename),
+      file.path(output_dir, "ae-four-hour-outturn-latest.html"),
+      overwrite = TRUE
+    )
+  }
   manifest <- data.table::rbindlist(list(
     manifest,
     data.table::data.table(

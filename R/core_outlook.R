@@ -21,15 +21,18 @@ core_outlook_points <- function(dates, values, x_position, y_position) {
   ), character(1)), collapse = " ")
 }
 
-core_recent_forecast_svg <- function(history, next_release, metric_row) {
+core_recent_forecast_svg <- function(history, next_release, metric_row,
+                                     actual_value = NA_real_) {
   z <- data.table::copy(history[complete_submission == TRUE & is.finite(value)])
   data.table::setorder(z, calendar_month)
-  z <- utils::tail(z, 18L)
   target_month <- data.table::as.IDate(next_release$forecast_month[1L])
+  if (is.finite(actual_value)) z <- z[calendar_month < target_month]
+  z <- utils::tail(z, 18L)
   dates <- data.table::as.IDate(c(as.Date(z$calendar_month), as.Date(target_month)))
   point <- next_release$predicted_value[1L]
   y_range <- core_outlook_y_range(c(
-    z$value, point, next_release$lower_80[1L], next_release$upper_80[1L]
+    z$value, point, actual_value,
+    next_release$lower_80[1L], next_release$upper_80[1L]
   ), metric_row$unit[1L])
   left <- 58; right <- 742; top <- 22; bottom <- 190
   x_position <- function(date) {
@@ -85,7 +88,16 @@ core_recent_forecast_svg <- function(history, next_release, metric_row) {
     '<text class="chart-label" x="', sprintf("%.1f", target_x - 6), '" y="',
     sprintf("%.1f", y_position(point) - 10), '" text-anchor="end">',
     performance_format_value(point, metric_row$unit[1L], metric_row$digits[1L]),
-    '</text>', x_ticks, '</svg>'
+    '</text>', if (is.finite(actual_value)) paste0(
+      '<circle class="actual-release-dot" cx="', sprintf("%.1f", target_x),
+      '" cy="', sprintf("%.1f", y_position(actual_value)), '" r="6"></circle>',
+      '<text class="chart-label" x="', sprintf("%.1f", target_x - 6),
+      '" y="', sprintf("%.1f", y_position(actual_value) + 16),
+      '" text-anchor="end">Actual ',
+      performance_format_value(
+        actual_value, metric_row$unit[1L], metric_row$digits[1L]
+      ), '</text>'
+    ) else "", x_ticks, '</svg>'
   )
 }
 
@@ -637,7 +649,9 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
                                       include_provider_page = TRUE,
                                       forecast_method = data.table::data.table(),
                                       forecast_components = data.table::data.table(),
-                                      community_service_summary = data.table::data.table()) {
+                                      community_service_summary = data.table::data.table(),
+                                      edition = "forecast",
+                                      publication_status = "pilot") {
   template <- paste(readLines(template_path, warn = FALSE), collapse = "\n")
   targets <- data.table::copy(targets)
   targets[, target_month := data.table::as.IDate(target_month)]
@@ -689,11 +703,60 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
       "the current-level seasonal component with the combined forecast."
     )
   }
+  is_outturn <- identical(edition, "outturn")
+  service_month <- if (is_outturn && "actual_month" %in% names(overview_row)) {
+    overview_row$actual_month[1L]
+  } else {
+    overview_row$latest_month[1L]
+  }
   service_page <- core_community_service_page(
-    community_service_summary, overview_row$latest_month[1L]
+    community_service_summary, service_month
   )
+  actual_value <- if (is_outturn && "actual_value" %in% names(overview_row)) {
+    overview_row$actual_value[1L]
+  } else {
+    NA_real_
+  }
+  actual_note <- if (is.finite(actual_value)) {
+    performance_outturn_note(overview_row[1L])
+  } else {
+    "Not yet released"
+  }
+  commentary <- if (is.finite(actual_value)) {
+    paste0(
+      "The published result was ",
+      performance_format_value(
+        actual_value, metric_row$unit[1L], metric_row$digits[1L]
+      ), ". It was ", actual_note, ". The provider distribution and trajectory ",
+      "watch have been refreshed using the new release."
+    )
+  } else {
+    core_outlook_commentary(
+      overview_row[1L], include_provider_page, forecast_components
+    )
+  }
   replacements <- list(
-    PAGE_TITLE = paste0(metric_row$display_name[1L], " outlook"),
+    PAGE_TITLE = paste0(
+      metric_row$display_name[1L], if (is_outturn) " outturn" else " outlook"
+    ),
+    EDITION_LABEL = nhs_outlook_edition_label(edition, publication_status),
+    EDITION_SUBTITLE = if (is_outturn) {
+      paste0(
+        "Outturn for ", performance_format_month(overview_row$forecast_month[1L]),
+        " · forecast issued with data through ",
+        performance_format_month(overview_row$latest_month[1L])
+      )
+    } else {
+      paste0(
+        "Forecast for ", performance_format_month(overview_row$forecast_month[1L]),
+        " · data through ", performance_format_month(overview_row$latest_month[1L])
+      )
+    },
+    RECENT_CHART_TITLE = if (is_outturn) {
+      "Recent performance and current release"
+    } else {
+      "Recent performance and next release"
+    },
     DISPLAY_NAME = performance_html_escape(metric_row$display_name[1L]),
     TARGET_MONTH = performance_format_month(overview_row$forecast_month[1L]),
     DATA_THROUGH_MONTH = performance_format_month(overview_row$latest_month[1L]),
@@ -712,8 +775,10 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
     LATEST_COMPARISON = performance_html_escape(
       performance_latest_comparison_text(overview_row[1L])
     ),
-    ACTUAL_VALUE = "—",
-    ACTUAL_NOTE = "Not yet released",
+    ACTUAL_VALUE = if (is.finite(actual_value)) performance_format_value(
+      actual_value, metric_row$unit[1L], metric_row$digits[1L]
+    ) else "—",
+    ACTUAL_NOTE = performance_html_escape(actual_note),
     TARGET_STATUS = if (overview_row$trajectory_status[1L] == "on_trajectory") {
       "On trajectory"
     } else {
@@ -722,11 +787,9 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
     TARGET_CLASS = overview_row$trajectory_status[1L],
     TARGET_LABEL = performance_html_escape(overview_row$target_label[1L]),
     TARGET_GAP = performance_html_escape(performance_target_gap_text(overview_row[1L])),
-    COMMENTARY = performance_html_escape(core_outlook_commentary(
-      overview_row[1L], include_provider_page, forecast_components
-    )),
+    COMMENTARY = performance_html_escape(commentary),
     RECENT_CHART = core_recent_forecast_svg(
-      national_panel, national_next, metric_row
+      national_panel, national_next, metric_row, actual_value
     ),
     PLANNING_CHART = core_planning_forecast_svg(
       national_panel, national_projection, targets, metric_row
@@ -759,7 +822,7 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
     TARGET_SOURCES = target_sources_html,
     METHOD_TEXT = performance_html_escape(method_text),
     SERVICE_PAGE_CLASS = if (service_page$available) "" else "service-omitted",
-    SERVICE_DATA_MONTH = performance_format_month(overview_row$latest_month[1L]),
+    SERVICE_DATA_MONTH = performance_format_month(service_month),
     SERVICES_TOTAL = as.character(service_page$services_total),
     SERVICES_COMPLETE = as.character(service_page$services_complete),
     SERVICE_ROWS = service_page$rows_html,

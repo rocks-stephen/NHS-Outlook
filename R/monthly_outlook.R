@@ -607,6 +607,8 @@ outlook_provider_rows <- function(signals, direction, n = 3L) {
       default = "Active"
     )
     evidence <- data.table::fcase(
+      z$signal_evidence[i] == "fixed_six_month_path_backtest",
+        "path fixed six months earlier",
       z$signal_evidence[i] == "genuine_release_vintages",
         "6 archived release forecasts",
       z$signal_evidence[i] == "mixed_genuine_and_simulated",
@@ -672,7 +674,10 @@ build_ae_outlook_page <- function(
   if (nrow(forecast_row) != 1L) stop("The outlook requires exactly one national forecast row.")
   target_month <- data.table::as.IDate(forecast_row$forecast_month[1L])
   actual <- forecast_row$actual_performance[1L]
-  state <- if (is.na(actual)) "Forecast issued" else "Actual released"
+  state <- nhs_outlook_edition_label(
+    if (is.na(actual)) "forecast" else "outturn",
+    nhs_outlook_publication_status()
+  )
   state_class <- if (is.na(actual)) "forecast-state" else "released-state"
   provider_assessed <- sum(!is.na(provider_signals$six_month_gap_to_trajectory_pp))
   above_n <- sum(provider_signals$signal == "sustained_above_trajectory", na.rm = TRUE)
@@ -736,6 +741,11 @@ build_ae_outlook_page <- function(
     } else {
       "What was forecast—and what was published"
     },
+    RECENT_CHART_TITLE = if (is.na(actual)) {
+      "Recent performance and next release"
+    } else {
+      "Recent performance and current release"
+    },
     STATE_LABEL = state,
     STATE_CLASS = state_class,
     DATA_THROUGH_MONTH = outlook_format_month(forecast_row$data_through_month[1L]),
@@ -789,7 +799,7 @@ build_ae_outlook_page <- function(
     ) {
       "All six-month signals use forecasts archived before each monthly release."
     } else {
-      "The archive is still building: each signal states whether it uses archived release forecasts, a historical backtest, or both."
+      "Signals compare the latest six actual months with a forecast path fixed before that six-month window."
     },
     PROVIDER_WINDOW_MONTHS = as.character(provider_window_months),
     PROVIDER_MATERIALITY_PP = outlook_format_pp(provider_materiality_pp),

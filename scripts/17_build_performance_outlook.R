@@ -261,6 +261,11 @@ if (publication_mode == "forecast") {
   for (column in provider_count_columns) {
     outturn_rows[, (column) := forecast_rows[[column]][current_provider_row]]
   }
+  outturn_rows[, deep_dive_file := data.table::fifelse(
+    metric_id == "ae4h_all",
+    "ae-four-hour-outturn-latest.html",
+    sub("-outlook-latest\\.html$", "-outturn-latest.html", deep_dive_file)
+  )]
 }
 
 commentary_config <- if (file.exists("config/editorial_commentary.csv")) {
@@ -365,7 +370,7 @@ if (publication_mode == "forecast") {
 }
 
 core_targets <- read_performance_csv("config/core_targets.csv", "target_month")
-if (publication_mode == "forecast") {
+if (publication_mode %in% c("forecast", "outturn")) {
   for (i in seq_len(nrow(active_config[adapter == "core_metric"]))) {
     metric_row <- active_config[adapter == "core_metric"][i]
     metric <- metric_row$metric_id[1L]
@@ -374,6 +379,21 @@ if (publication_mode == "forecast") {
       file.path(metric_dir, "national_next_release_forecast.csv"),
       c("data_through_month", "forecast_month")
     )
+    detail_row <- if (publication_mode == "forecast") {
+      forecast_rows[metric_id == metric]
+    } else {
+      outturn_rows[metric_id == metric]
+    }
+    if (publication_mode == "outturn") {
+      national_next_core[, `:=`(
+        data_through_month = detail_row$latest_month[1L],
+        forecast_month = detail_row$forecast_month[1L],
+        predicted_value = detail_row$forecast_value[1L],
+        lower_80 = detail_row$lower_80[1L],
+        upper_80 = detail_row$upper_80[1L],
+        latest_actual_value = detail_row$latest_value[1L]
+      )]
+    }
     national_projection_core <- read_performance_csv(
       file.path(metric_dir, "national_reference_projection.csv"),
       c("data_through_month", "forecast_month")
@@ -403,10 +423,18 @@ if (publication_mode == "forecast") {
     } else {
       core_empty_provider_watchlist()
     }
-    output_path <- file.path(output_release_dir, metric_row$deep_dive_file[1L])
+    output_file <- if (publication_mode == "forecast") {
+      metric_row$deep_dive_file[1L]
+    } else {
+      sub(
+        "-outlook-latest\\.html$", "-outturn-latest.html",
+        metric_row$deep_dive_file[1L]
+      )
+    }
+    output_path <- file.path(output_release_dir, output_file)
     build_core_metric_outlook(
       metric_row,
-      forecast_rows[metric_id == metric],
+      detail_row,
       core_national_panel[metric_id == metric],
       national_next_core,
       national_projection_core,
@@ -425,7 +453,9 @@ if (publication_mode == "forecast") {
         community_service_summary
       } else {
         data.table::data.table()
-      }
+      },
+      edition = publication_mode,
+      publication_status = publication_status
     )
     file.copy(
       output_path,

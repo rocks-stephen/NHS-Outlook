@@ -621,6 +621,7 @@ build_performance_outlook_page <- function(rows, template_path, output_path,
     } else {
       "What was published, compared with the pre-release outlook"
     },
+    BASELINE_HEADING = if (edition == "forecast") "Latest" else "Previous",
     ISSUE_DATE = issue_date,
     N_METRICS = as.character(nrow(rows)),
     COVERAGE_NOTE = coverage_note,

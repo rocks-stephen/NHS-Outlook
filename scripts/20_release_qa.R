@@ -829,11 +829,15 @@ if (file.exists(publication_manifest_path)) {
       file.path("output/releases", current_rows$deep_dive_file)
     ))
   } else if (publication_mode == "outturn") {
+    outturn_rows_for_manifest <- read_csv(
+      "output/performance/outturn_metric_rows.csv"
+    )
     provider_watch_manifest <- read_csv(
       "output/performance/outturn_provider_watch_manifest.csv"
     )
     unique(c(
       "output/releases/nhs-performance-outturn-latest.html",
+      file.path("output/releases", outturn_rows_for_manifest$deep_dive_file),
       file.path("output/releases", provider_watch_manifest$output_file)
     ))
   } else {
@@ -915,6 +919,38 @@ if (file.exists(publication_manifest_path)) {
       "Ambulance Category 2 detailed forecast is included.",
       publication_manifest_path
     )
+  } else if (publication_mode == "outturn") {
+    outturn_rows_check <- read_csv("output/performance/outturn_metric_rows.csv")
+    outturn_html_path <- "output/releases/nhs-performance-outturn-latest.html"
+    outturn_html <- paste(
+      readLines(outturn_html_path, warn = FALSE, encoding = "UTF-8"),
+      collapse = "\n"
+    )
+    detail_paths <- file.path(
+      "output/releases", outturn_rows_check$deep_dive_file
+    )
+    details_marked_outturn <- all(vapply(detail_paths, function(path) {
+      if (!file.exists(path)) return(FALSE)
+      html <- paste(
+        readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n"
+      )
+      grepl("Pilot · Outturn", html, fixed = TRUE) &&
+        !grepl("Not yet released", html, fixed = TRUE)
+    }, logical(1)))
+    add_check(
+      "publication", "ALL", "outturn_details_cover_all_indicators", "fatal",
+      nrow(outturn_rows_check) == 8L && all(file.exists(detail_paths)) &&
+        details_marked_outturn,
+      paste(sum(file.exists(detail_paths)), "outturn detail file(s) present"),
+      "output/performance/outturn_metric_rows.csv"
+    )
+    add_check(
+      "publication", "ALL", "outturn_uses_previous_heading", "fatal",
+      grepl("<th>Previous</th>", outturn_html, fixed = TRUE) &&
+        !grepl("<th>Latest</th>", outturn_html, fixed = TRUE),
+      "Outturn baseline column is labelled Previous, not Latest.",
+      outturn_html_path
+    )
   }
   add_check(
     "publication", "ALL", "manifest_rows_match_publication_mode", "fatal",
@@ -927,7 +963,10 @@ if (file.exists(publication_manifest_path)) {
       all(publication_manifest$edition == publication_mode) &&
       sum(publication_manifest$artifact_role == "overview") == 1L &&
       if (publication_mode == "outturn") {
-        all(publication_manifest$artifact_role %in% c("overview", "provider_watch")) &&
+        all(publication_manifest$artifact_role %in% c(
+          "overview", "provider_watch", "indicator_deep_dive"
+        )) &&
+          any(publication_manifest$artifact_role == "indicator_deep_dive") &&
           any(publication_manifest$artifact_role == "provider_watch")
       } else {
         all(publication_manifest$artifact_role %in% c(

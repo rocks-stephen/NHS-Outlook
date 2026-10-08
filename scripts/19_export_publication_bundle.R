@@ -72,6 +72,23 @@ if (publication_mode == "forecast") {
     deep_dive_html
   ))
 } else {
+  outturn_metric_rows <- data.table::fread(
+    "output/performance/outturn_metric_rows.csv", encoding = "UTF-8"
+  )
+  assert_columns(
+    outturn_metric_rows, c("metric_id", "deep_dive_file"),
+    "outturn performance rows"
+  )
+  outturn_detail_html <- file.path(
+    "output/releases", unique(outturn_metric_rows$deep_dive_file)
+  )
+  missing_outturn_details <- outturn_detail_html[!file.exists(outturn_detail_html)]
+  if (length(missing_outturn_details)) {
+    stop(
+      "Outturn rows reference missing detail files: ",
+      paste(missing_outturn_details, collapse = ", "), "."
+    )
+  }
   provider_watch_manifest <- data.table::fread(
     "output/performance/outturn_provider_watch_manifest.csv", encoding = "UTF-8"
   )
@@ -95,6 +112,7 @@ if (publication_mode == "forecast") {
   }
   html_files <- unique(c(
     "output/releases/nhs-performance-outturn-latest.html",
+    outturn_detail_html,
     provider_watch_html
   ))
 }

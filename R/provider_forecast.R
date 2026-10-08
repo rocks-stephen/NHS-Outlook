@@ -668,6 +668,8 @@ provider_fixed_origin_outlook <- function(panel, config) {
     fixed_origin_expected_average = mean(predicted_performance),
     fixed_origin_gap_pp = mean(residual_pp),
     fixed_origin_direction_share = max(mean(residual_pp > 0), mean(residual_pp < 0)),
+    fixed_origin_latest_error_same_direction =
+      sign(utils::tail(residual_pp, 1L)) == sign(mean(residual_pp)),
     fixed_origin_context_evidence = unique(context_evidence)
   ), by = analysis_trust_id]
   data.table::setorder(detail, analysis_trust_id, target_month)
@@ -733,9 +735,55 @@ make_provider_watchlist <- function(
       fixed_origin_expected_average = NA_real_,
       fixed_origin_gap_pp = NA_real_,
       fixed_origin_direction_share = NA_real_,
+      fixed_origin_latest_error_same_direction = NA,
       fixed_origin_context_evidence = NA_character_
     )]
   }
+  window <- parse_integer_setting(config, "persistent_window_months", 2L)
+  materiality <- parse_numeric_setting(
+    config, "persistent_materiality_pp", 0
+  )
+  direction_share_required <- parse_numeric_setting(
+    config, "persistent_direction_share", 0.5, 1
+  )
+  fixed_ok <- out$fixed_origin_months_n == window &
+    is.finite(out$fixed_origin_gap_pp) &
+    is.finite(out$fixed_origin_direction_share) &
+    !is.na(out$fixed_origin_latest_error_same_direction)
+  out[fixed_ok, `:=`(
+    six_month_actual_average = fixed_origin_actual_average,
+    six_month_expected_average = fixed_origin_expected_average,
+    six_month_gap_to_trajectory_pp = fixed_origin_gap_pp,
+    six_month_direction_share = fixed_origin_direction_share,
+    latest_error_same_direction = fixed_origin_latest_error_same_direction,
+    genuine_release_vintages_6m = 0L,
+    simulated_vintages_6m = window,
+    signal_evidence = "fixed_six_month_path_backtest",
+    practically_material_6m = abs(fixed_origin_gap_pp) >= materiality,
+    directionally_persistent_6m =
+      fixed_origin_direction_share >= direction_share_required
+  )]
+  out[fixed_ok, signal := data.table::fcase(
+    fixed_origin_gap_pp >= materiality &
+      fixed_origin_direction_share >= direction_share_required &
+      fixed_origin_latest_error_same_direction,
+    "sustained_above_trajectory",
+    fixed_origin_gap_pp <= -materiality &
+      fixed_origin_direction_share >= direction_share_required &
+      fixed_origin_latest_error_same_direction,
+    "sustained_below_trajectory",
+    default = "within_sustained_threshold"
+  )]
+  out[fixed_ok, `:=`(
+    signal_status = data.table::fifelse(
+      signal %in% c("sustained_above_trajectory", "sustained_below_trajectory"),
+      "fixed_path_signal", "stable_within_threshold"
+    ),
+    review_priority = data.table::fifelse(
+      signal %in% c("sustained_above_trajectory", "sustained_below_trajectory"),
+      "review", "none"
+    )
+  )]
   out[is.na(signal), `:=`(
     signal = "insufficient_consecutive_history",
     signal_status = "insufficient_history",
