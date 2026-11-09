@@ -27,18 +27,19 @@ assert_columns(
   "performance overview manifest"
 )
 if (nrow(overview_manifest) != 1L ||
-    overview_manifest$publication_mode[1L] != "forecast") {
-  stop("The public website is built from one forecast-edition overview manifest.")
+    !overview_manifest$publication_mode[1L] %in% c("forecast", "outturn")) {
+  stop("The public website requires one forecast or outturn overview manifest.")
 }
+publication_mode <- overview_manifest$publication_mode[1L]
 release_date <- as.Date(overview_manifest$issue_date[1L])
 if (is.na(release_date)) stop("Overview manifest contains an invalid issue date.")
 if (overview_manifest$publication_status[1L] != "pilot") {
   stop("This publication is configured as a pilot but the manifest is not marked pilot.")
 }
 issue_day <- format(release_date, "%Y-%m-%d")
-forecast_dir <- file.path(publication_root, issue_day, "forecast")
-if (!dir.exists(forecast_dir)) {
-  stop("Forecast publication folder not found: ", forecast_dir, ".")
+bundle_dir <- file.path(publication_root, issue_day, publication_mode)
+if (!dir.exists(bundle_dir)) {
+  stop("Publication bundle folder not found: ", bundle_dir, ".")
 }
 
 metric_config <- data.table::fread(
@@ -46,10 +47,19 @@ metric_config <- data.table::fread(
   encoding = "UTF-8"
 )
 metric_config[, active := parse_logical_strict(active)]
-detail_tbl <- metric_config[
-  active == TRUE,
-  .(metric_id, display_order, label = display_name, file = deep_dive_file)
-][order(display_order)]
+rows_path <- file.path(
+  project_root, "output", "performance",
+  if (publication_mode == "forecast") "overview_metric_rows.csv" else "outturn_metric_rows.csv"
+)
+if (!file.exists(rows_path)) stop("Website metric rows not found: ", rows_path, ".")
+published_rows <- data.table::fread(rows_path, encoding = "UTF-8")
+assert_columns(
+  published_rows, c("metric_id", "display_order", "display_name", "deep_dive_file"),
+  "website metric rows"
+)
+detail_tbl <- published_rows[, .(
+  metric_id, display_order, label = display_name, file = deep_dive_file
+)][order(display_order)]
 expected_metric_ids <- c(
   "ae4h_all", "ambulance_cat2", "rtt_18w", "diagnostics_6w",
   "cancer_62d", "ucr_2h", "community_18w", "talking_therapies_6w"
@@ -61,33 +71,43 @@ if (nrow(detail_tbl) != 8L ||
     "their expected order; found: ", paste(detail_tbl$metric_id, collapse = ", "), "."
   )
 }
-if (detail_tbl[metric_id == "community_18w", file] !=
-      "community-18-week-outlook-latest.html" ||
-    detail_tbl[metric_id == "rtt_18w", file] !=
-      "rtt-18-week-outlook-latest.html") {
+expected_suffix <- if (publication_mode == "forecast") {
+  "-outlook-latest.html"
+} else {
+  "-outturn-latest.html"
+}
+if (!all(endsWith(detail_tbl$file, expected_suffix))) {
+  stop("Indicator detail files do not match the active publication mode.")
+}
+if (detail_tbl[metric_id == "community_18w", file] ==
+    detail_tbl[metric_id == "rtt_18w", file]) {
   stop("Community 18-week and RTT detailed outputs are not distinctly mapped.")
 }
 detail_tbl[, source_file := file.path(html_source_dir, file)]
 missing_details <- detail_tbl[!file.exists(source_file), file]
 if (length(missing_details)) {
   stop(
-    "All eight current detailed HTML forecasts are required; missing: ",
+    "All eight current detailed HTML files are required; missing: ",
     paste(missing_details, collapse = ", "), "."
   )
 }
 
-main_html <- file.path(
-  html_source_dir, "nhs-performance-outlook-forecast-latest.html"
-)
+main_filename <- if (publication_mode == "forecast") {
+  "nhs-performance-outlook-forecast-latest.html"
+} else {
+  "nhs-performance-outturn-latest.html"
+}
+main_html <- file.path(html_source_dir, main_filename)
 if (!file.exists(main_html)) {
   stop("Current main NHS Outlook HTML was not found: ", main_html, ".")
 }
-main_latest_alias <- file.path(
-  html_source_dir, "nhs-performance-outlook-latest.html"
-)
-if (!file.exists(main_latest_alias)) {
-  stop("Current main NHS Outlook latest alias was not found: ",
-       main_latest_alias, ".")
+main_latest_alias <- if (publication_mode == "forecast") {
+  file.path(html_source_dir, "nhs-performance-outlook-latest.html")
+} else {
+  character()
+}
+if (length(main_latest_alias) && !file.exists(main_latest_alias)) {
+  stop("Current main NHS Outlook latest alias was not found: ", main_latest_alias, ".")
 }
 
 dir.create(site_dir, recursive = TRUE, showWarnings = FALSE)
@@ -98,9 +118,17 @@ if (dir.exists(forecast_asset_dir)) {
 pdf_site_dir <- file.path(forecast_asset_dir, issue_day)
 dir.create(pdf_site_dir, recursive = TRUE, showWarnings = FALSE)
 
-html_to_copy <- unique(c(
-  main_html, main_latest_alias, detail_tbl$source_file
-))
+provider_watch_files <- character()
+if (publication_mode == "outturn") {
+  provider_manifest_path <- file.path(
+    project_root, "output", "performance", "outturn_provider_watch_manifest.csv"
+  )
+  provider_manifest <- data.table::fread(provider_manifest_path, encoding = "UTF-8")
+  assert_columns(provider_manifest, "output_file", "outturn provider-watch manifest")
+  provider_watch_files <- file.path(html_source_dir, provider_manifest$output_file)
+}
+html_to_copy <- unique(c(main_html, main_latest_alias, detail_tbl$source_file,
+                         provider_watch_files))
 copied_html <- file.copy(
   html_to_copy,
   file.path(site_dir, basename(html_to_copy)),
@@ -111,20 +139,22 @@ if (!all(copied_html)) {
 }
 
 pdf_sources <- list.files(
-  forecast_dir, pattern = "[.]pdf$", full.names = TRUE, ignore.case = TRUE
+  bundle_dir, pattern = "[.]pdf$", full.names = TRUE, ignore.case = TRUE
 )
-if (!length(pdf_sources)) stop("The forecast publication bundle contains no PDFs.")
+if (!length(pdf_sources)) stop("The publication bundle contains no PDFs.")
 copied_pdf <- file.copy(
   pdf_sources,
   file.path(pdf_site_dir, basename(pdf_sources)),
   overwrite = TRUE
 )
-if (!all(copied_pdf)) stop("One or more forecast PDFs could not be copied.")
+if (!all(copied_pdf)) stop("One or more publication PDFs could not be copied.")
 
-main_pdf <- pdf_sources[grepl(
-  "^nhs-performance-outlook-forecast-.*[.]pdf$",
-  basename(pdf_sources), ignore.case = TRUE
-)]
+main_pdf_pattern <- if (publication_mode == "forecast") {
+  "^nhs-performance-outlook-forecast-.*[.]pdf$"
+} else {
+  "^nhs-performance-outturn-.*[.]pdf$"
+}
+main_pdf <- pdf_sources[grepl(main_pdf_pattern, basename(pdf_sources), ignore.case = TRUE)]
 if (!length(main_pdf)) {
   stop("The publication bundle has no main NHS Performance Outlook PDF.")
 }
@@ -142,13 +172,10 @@ html <- paste(
 if (!grepl("Pilot", html, fixed = TRUE)) {
   stop("Main NHS Outlook HTML is not marked Pilot; rebuild script 17.")
 }
-if (!grepl('<th class="detail-head">Detail</th>', html, fixed = TRUE)) {
-  stop("Main NHS Outlook HTML does not contain the web-only Detail column.")
-}
 for (detail_file in detail_tbl$file) {
   link <- paste0('href="', detail_file, '"')
   if (!grepl(link, html, fixed = TRUE)) {
-    stop("Main NHS Outlook is missing its Detail link to ", detail_file, ".")
+    stop("Main NHS Outlook is missing its indicator link to ", detail_file, ".")
   }
 }
 
@@ -185,6 +212,11 @@ website_manifest <- data.table::rbindlist(list(
     artifact_role = "indicator_detail", metric_id,
     relative_path = file
   )],
+  if (length(provider_watch_files)) data.table::data.table(
+    artifact_role = "provider_watch",
+    metric_id = NA_character_,
+    relative_path = basename(provider_watch_files)
+  ) else NULL,
   data.table::data.table(
     artifact_role = "pdf", metric_id = NA_character_,
     relative_path = gsub(

@@ -661,17 +661,40 @@ provider_fixed_origin_outlook <- function(panel, config) {
     )
     return(list(detail = detail, summary = data.table::data.table()))
   }
+  data.table::setorder(detail, analysis_trust_id, target_month)
   summary <- detail[, .(
     fixed_origin_month = unique(fixed_origin_month),
     fixed_origin_months_n = .N,
     fixed_origin_actual_average = mean(actual_performance),
     fixed_origin_expected_average = mean(predicted_performance),
     fixed_origin_gap_pp = mean(residual_pp),
-    fixed_origin_direction_share = max(mean(residual_pp > 0), mean(residual_pp < 0)),
+    fixed_origin_latest_expected_performance = utils::tail(predicted_performance, 1L),
+    fixed_origin_latest_gap_pp = utils::tail(residual_pp, 1L),
+    fixed_origin_direction_share = mean(
+      sign(residual_pp) == sign(utils::tail(residual_pp, 1L))
+    ),
     fixed_origin_latest_error_same_direction =
-      sign(utils::tail(residual_pp, 1L)) == sign(mean(residual_pp)),
+      utils::tail(residual_pp, 1L) != 0,
     fixed_origin_context_evidence = unique(context_evidence)
   ), by = analysis_trust_id]
+  origin_rows <- panel[
+    calendar_month == origin_month & analysis_trust_id %in% detail$analysis_trust_id &
+      complete_submission & !is.na(ae4h_performance),
+    .(
+      target_month = calendar_month,
+      predicted_performance = ae4h_performance,
+      actual_performance = ae4h_performance,
+      actual_ae4h_attendances_n = ae4h_attendances_n,
+      analysis_trust_id,
+      analysis_trust_name,
+      fixed_origin_month = calendar_month,
+      residual_pp = 0,
+      context_evidence = "observed_forecast_origin"
+    )
+  ]
+  detail <- data.table::rbindlist(
+    list(origin_rows, detail), use.names = TRUE, fill = TRUE
+  )
   data.table::setorder(detail, analysis_trust_id, target_month)
   list(detail = detail[], summary = summary[])
 }
@@ -734,6 +757,8 @@ make_provider_watchlist <- function(
       fixed_origin_actual_average = NA_real_,
       fixed_origin_expected_average = NA_real_,
       fixed_origin_gap_pp = NA_real_,
+      fixed_origin_latest_expected_performance = NA_real_,
+      fixed_origin_latest_gap_pp = NA_real_,
       fixed_origin_direction_share = NA_real_,
       fixed_origin_latest_error_same_direction = NA,
       fixed_origin_context_evidence = NA_character_
@@ -746,29 +771,46 @@ make_provider_watchlist <- function(
   direction_share_required <- parse_numeric_setting(
     config, "persistent_direction_share", 0.5, 1
   )
-  fixed_ok <- out$fixed_origin_months_n == window &
-    is.finite(out$fixed_origin_gap_pp) &
+  fixed_ok <- !is.na(out$fixed_origin_months_n) &
+    out$fixed_origin_months_n == window &
+    is.finite(out$fixed_origin_latest_gap_pp) &
+    is.finite(out$fixed_origin_latest_expected_performance) &
     is.finite(out$fixed_origin_direction_share) &
     !is.na(out$fixed_origin_latest_error_same_direction)
+  # A published fixed-path gap must never fall back to rolling one-month
+  # forecast errors. Keep those historic diagnostics in their existing columns.
+  out[, `:=`(
+    latest_expected_performance = NA_real_,
+    latest_gap_to_trajectory_pp = NA_real_,
+    trajectory_gap_basis = "latest_month_fixed_path"
+  )]
+  out[!fixed_ok, `:=`(
+    signal = "insufficient_consecutive_history",
+    signal_status = "insufficient_history",
+    review_priority = "none",
+    signal_evidence = NA_character_
+  )]
   out[fixed_ok, `:=`(
     six_month_actual_average = fixed_origin_actual_average,
     six_month_expected_average = fixed_origin_expected_average,
     six_month_gap_to_trajectory_pp = fixed_origin_gap_pp,
+    latest_expected_performance = fixed_origin_latest_expected_performance,
+    latest_gap_to_trajectory_pp = fixed_origin_latest_gap_pp,
     six_month_direction_share = fixed_origin_direction_share,
     latest_error_same_direction = fixed_origin_latest_error_same_direction,
     genuine_release_vintages_6m = 0L,
     simulated_vintages_6m = window,
     signal_evidence = "fixed_six_month_path_backtest",
-    practically_material_6m = abs(fixed_origin_gap_pp) >= materiality,
+    practically_material_6m = abs(fixed_origin_latest_gap_pp) >= materiality,
     directionally_persistent_6m =
       fixed_origin_direction_share >= direction_share_required
   )]
   out[fixed_ok, signal := data.table::fcase(
-    fixed_origin_gap_pp >= materiality &
+    fixed_origin_latest_gap_pp >= materiality &
       fixed_origin_direction_share >= direction_share_required &
       fixed_origin_latest_error_same_direction,
     "sustained_above_trajectory",
-    fixed_origin_gap_pp <= -materiality &
+    fixed_origin_latest_gap_pp <= -materiality &
       fixed_origin_direction_share >= direction_share_required &
       fixed_origin_latest_error_same_direction,
     "sustained_below_trajectory",
@@ -800,7 +842,7 @@ make_provider_watchlist <- function(
   priority_order <- c(high_review = 1L, review = 2L, none = 3L)
   out[, `:=`(
     priority_sort___ = priority_order[review_priority],
-    gap_sort___ = abs(six_month_gap_to_trajectory_pp)
+    gap_sort___ = abs(latest_gap_to_trajectory_pp)
   )]
   data.table::setorder(
     out, priority_sort___, -gap_sort___, analysis_trust_name
@@ -842,12 +884,15 @@ make_provider_signal_archive_rows <- function(watchlist, config) {
     "provider_all_ae4h_v1"
   }
   watchlist[, .(
-    signal_version = version,
+    signal_version = paste0(version, "_latest_month_gap_v1"),
     data_through_month,
     analysis_trust_id,
     analysis_trust_name,
     latest_actual_performance,
     latest_ae4h_attendances_n,
+    latest_expected_performance,
+    latest_gap_to_trajectory_pp,
+    trajectory_gap_basis,
     six_month_actual_average,
     six_month_expected_average,
     six_month_gap_to_trajectory_pp,
@@ -868,6 +913,8 @@ make_provider_signal_archive_rows <- function(watchlist, config) {
     fixed_origin_actual_average,
     fixed_origin_expected_average,
     fixed_origin_gap_pp,
+    fixed_origin_latest_expected_performance,
+    fixed_origin_latest_gap_pp,
     fixed_origin_direction_share,
     fixed_origin_context_evidence,
     identity_status,

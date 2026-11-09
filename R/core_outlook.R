@@ -186,7 +186,57 @@ core_planning_forecast_svg <- function(history, projection, targets, metric_row)
   )
 }
 
-core_signal_rows_html <- function(watchlist, signal_value, metric_row, top_n = 3L) {
+core_provider_spark_svg <- function(path, entity_id, metric_row) {
+  if (!nrow(path)) return("")
+  entity_id_value <- entity_id
+  z <- data.table::copy(path[entity_id == entity_id_value])
+  if (!nrow(z) || !all(c("target_month", "predicted_value", "actual_value") %in% names(z))) {
+    return("")
+  }
+  data.table::setorder(z, target_month)
+  z <- z[is.finite(predicted_value) & is.finite(actual_value)]
+  if (nrow(z) < 2L) return("")
+  values <- c(z$predicted_value, z$actual_value)
+  padding <- max(diff(range(values)) * 0.12,
+    if (metric_row$unit[1L] == "proportion") 0.005 else 0.25)
+  y_min <- min(values) - padding; y_max <- max(values) + padding
+  x <- seq(6, 104, length.out = nrow(z))
+  y <- function(value) 40 - (value - y_min) * 34 / max(1e-9, y_max - y_min)
+  points <- function(value) paste(
+    paste0(sprintf("%.1f", x), ",", sprintf("%.1f", y(value))), collapse = " "
+  )
+  paste0(
+    '<svg class="provider-spark" viewBox="0 0 110 48" role="img" aria-label="Six-month actual and fixed forecast path">',
+    '<polyline class="spark-forecast" points="', points(z$predicted_value), '"></polyline>',
+    '<polyline class="spark-actual" points="', points(z$actual_value), '"></polyline>',
+    '<circle class="spark-forecast-dot" cx="104" cy="', sprintf("%.1f", y(utils::tail(z$predicted_value, 1L))), '" r="2.4"></circle>',
+    '<circle class="spark-actual-dot" cx="104" cy="', sprintf("%.1f", y(utils::tail(z$actual_value, 1L))), '" r="2.4"></circle>',
+    '</svg><div class="spark-key"><span class="actual-key">Actual</span><span class="forecast-key">Fixed forecast</span></div>'
+  )
+}
+
+core_assert_latest_month_gaps <- function(watchlist) {
+  if (!nrow(watchlist)) return(invisible(TRUE))
+  required <- c("trajectory_gap_basis", "latest_error_native", "latest_expected_value")
+  if (!all(required %in% names(watchlist)) || any(
+    is.na(watchlist$trajectory_gap_basis) |
+      watchlist$trajectory_gap_basis != "latest_month_fixed_path"
+  )) {
+    stop("Provider watchlist predates the latest-month gap method. Rerun provider modelling before rendering.")
+  }
+  valid <- is.finite(watchlist$latest_error_native)
+  if (any(valid & (
+    !is.finite(watchlist$latest_expected_value) |
+      abs(watchlist$latest_value - watchlist$latest_expected_value -
+        watchlist$latest_error_native) > 1e-8
+  ))) stop("Provider latest-month gap does not match actual minus fixed forecast.")
+  invisible(TRUE)
+}
+
+core_signal_rows_html <- function(watchlist, signal_value, metric_row,
+                                  provider_path = data.table::data.table(),
+                                  top_n = 3L) {
+  core_assert_latest_month_gaps(watchlist)
   z <- data.table::copy(watchlist[signal == signal_value])
   if (!nrow(z)) return('<div class="empty-signal">No qualifying signal.</div>')
   z[, signal_strength___ := abs(favourable_gap_native)]
@@ -199,16 +249,46 @@ core_signal_rows_html <- function(watchlist, signal_value, metric_row, top_n = 3
     performance_format_value(z$latest_value[i], metric_row$unit[1L], metric_row$digits[1L]),
     ' · ', z$signal_months_n[i],
     ' months compared with a path fixed six months earlier</div><div class="provider-evidence">',
-    gsub("_", " ", z$signal_evidence[i], fixed = TRUE),
-    '</div></div><div class="provider-gap ', css, '"><strong>',
+    'Forecast fixed before the six-month window',
+    '</div></div><div class="provider-spark-wrap">',
+    core_provider_spark_svg(provider_path, z$entity_id[i], metric_row),
+    '</div><div class="provider-gap ', css, '"><strong>',
     performance_format_difference(
       abs(z$favourable_gap_native[i]), metric_row$unit[1L],
       metric_row$digits[1L]
-    ), '</strong><span>average gap from fixed path</span></div></div>'
+    ), '</strong><span>',
+    if (z$latest_error_native[i] >= 0) {
+      "latest month: above forecast"
+    } else {
+      "latest month: below forecast"
+    },
+    '</span></div></div>'
   ), character(1)), collapse = "")
 }
 
-core_provider_distribution_svg <- function(watchlist, metric_row, target_value) {
+core_provider_signal_severity <- function(signal, favourable_gap_native,
+                                          materiality_native) {
+  threshold <- as.numeric(materiality_native)[1L]
+  if (!is.finite(threshold) || threshold <= 0) {
+    stop("Provider signal materiality threshold must be positive.")
+  }
+  ratio <- abs(favourable_gap_native) / threshold
+  data.table::fcase(
+    signal == "sustained_favourable" & ratio >= 2, "marked-favourable",
+    signal == "sustained_favourable", "moderate-favourable",
+    signal == "sustained_adverse" & ratio >= 2, "marked-adverse",
+    signal == "sustained_adverse", "moderate-adverse",
+    default = "neutral"
+  )
+}
+
+core_provider_severity_label <- function(severity) {
+  gsub("-", " ", severity, fixed = TRUE)
+}
+
+core_provider_distribution_svg <- function(watchlist, metric_row, target_value,
+                                           materiality_native) {
+  core_assert_latest_month_gaps(watchlist)
   z <- data.table::copy(watchlist[is.finite(latest_value)])
   if (!nrow(z)) {
     return(paste0(
@@ -231,18 +311,35 @@ core_provider_distribution_svg <- function(watchlist, metric_row, target_value) 
     left + (value - x_min) * (right - left) / max(1e-9, x_max - x_min)
   }
   z[, y___ := 55 + (seq_len(.N) %% 7L) * 8]
-  z[, class___ := data.table::fcase(
-    signal == "sustained_favourable", "favourable",
-    signal == "sustained_adverse", "adverse",
-    default = "neutral"
+  z[, class___ := core_provider_signal_severity(
+    signal, favourable_gap_native, materiality_native
   )]
+  gap_description <- function(gap) {
+    if (!is.finite(gap)) return("latest-month fixed-path comparison unavailable")
+    paste0(
+      "latest-month gap ",
+      performance_format_difference(
+        abs(gap), metric_row$unit[1L], metric_row$digits[1L]
+      ),
+      if (gap >= 0) " better" else " worse",
+      " than fixed forecast for the same month"
+    )
+  }
   dots <- paste(vapply(seq_len(nrow(z)), function(i) paste0(
     '<circle class="distribution-dot ', z$class___[i], '" cx="',
     sprintf("%.1f", x_position(z$latest_value[i])), '" cy="', z$y___[i],
-    '" r="4"><title>', performance_html_escape(z$entity_name[i]), ': ',
+    '" r="4" tabindex="0" role="button" data-provider-id="',
+    performance_html_escape(z$entity_id[i]), '" aria-label="',
+    performance_html_escape(z$entity_name[i]), ': ',
+    performance_format_value(z$latest_value[i], metric_row$unit[1L], metric_row$digits[1L]),
+    '. ', core_provider_severity_label(z$class___[i]), '; ',
+    gap_description(z$favourable_gap_native[i]),
+    '. Show trajectory"><title>',
+    performance_html_escape(z$entity_name[i]), ': ',
     performance_format_value(
       z$latest_value[i], metric_row$unit[1L], metric_row$digits[1L]
-    ), '</title></circle>'
+    ), ' · ', core_provider_severity_label(z$class___[i]), ' · ',
+    gap_description(z$favourable_gap_native[i]), '</title></circle>'
   ), character(1)), collapse = "")
   target <- if (is.finite(target_value)) {
     target_x <- x_position(target_value)
@@ -287,21 +384,74 @@ core_provider_distribution_svg <- function(watchlist, metric_row, target_value) 
     'aria-label="Distribution of latest provider performance">', target,
     '<line class="distribution-axis" x1="', left, '" x2="', right,
     '" y1="', bottom, '" y2="', bottom, '"></line>', dots, tick_html,
-    '</svg>'
+    '</svg><div class="distribution-legend" aria-label="Trajectory-watch severity legend">',
+    '<span><i class="marked-adverse"></i>Marked deterioration</span>',
+    '<span><i class="moderate-adverse"></i>Moderate deterioration</span>',
+    '<span><i class="neutral"></i>No sustained signal</span>',
+    '<span><i class="moderate-favourable"></i>Moderate improvement</span>',
+    '<span><i class="marked-favourable"></i>Marked improvement</span>',
+    '<em>Moderate = 1–&lt;2×; marked = at least 2× the metric-specific materiality threshold.</em></div>'
   )
 }
+
+core_provider_explorer_html <- function(provider_path, metric_row) {
+  required <- c("entity_id", "entity_name", "target_month", "predicted_value", "actual_value")
+  if (!nrow(provider_path) || !all(required %in% names(provider_path))) return("")
+  z <- data.table::copy(provider_path[
+    is.finite(predicted_value) & is.finite(actual_value)
+  ])
+  if (!nrow(z)) return("")
+  data.table::setorder(z, entity_name, target_month)
+  valid_ids <- z[, .N, by = entity_id][N >= 2L, entity_id]
+  z <- z[entity_id %in% valid_ids]
+  if (!nrow(z)) return("")
+  groups <- split(z, z$entity_id)
+  options <- vapply(groups, function(g) {
+    months <- format(as.Date(g$target_month), "%b %Y")
+    paste0(
+      '<option value="', performance_html_escape(g$entity_id[1L]),
+      '" data-name="', performance_html_escape(g$entity_name[1L]),
+      '" data-months="', paste(months, collapse = "|"),
+      '" data-forecast="', paste(g$predicted_value, collapse = "|"),
+      '" data-actual="', paste(g$actual_value, collapse = "|"), '">',
+      performance_html_escape(g$entity_name[1L]), '</option>'
+    )
+  }, character(1))
+  paste0(
+    '<section class="provider-explorer" data-provider-explorer data-unit="',
+    performance_html_escape(metric_row$unit[1L]), '" data-digits="',
+    metric_row$digits[1L], '"><div class="explorer-head"><div><strong>Explore a provider trajectory</strong>',
+    '<span>Select a trust, or click a dot above. Hover or focus on a dot to identify it.</span></div>',
+    '<label>Trust<select data-provider-select>', paste(options, collapse = ""),
+    '</select></label></div><div class="explorer-summary" data-provider-summary></div>',
+    '<svg class="explorer-chart" data-provider-chart viewBox="0 0 770 180" role="img" ',
+    'aria-label="Selected provider actual and fixed forecast trajectory"></svg></section>'
+  )
+}
+
+provider_explorer_script <- function() paste0(
+  "document.querySelectorAll('[data-provider-explorer]').forEach(function(root){",
+  "var select=root.querySelector('[data-provider-select]'),svg=root.querySelector('[data-provider-chart]'),summary=root.querySelector('[data-provider-summary]'),ns='http://www.w3.org/2000/svg';",
+  "if(!select||!svg)return;function add(tag,attrs,text){var el=document.createElementNS(ns,tag);Object.keys(attrs||{}).forEach(function(k){el.setAttribute(k,attrs[k]);});if(text!==undefined)el.textContent=text;svg.appendChild(el);return el;}",
+  "function fmt(v){var d=Number(root.dataset.digits||1);return root.dataset.unit==='proportion'?(v*100).toFixed(d)+'%':v.toFixed(d);}",
+  "function draw(){var o=select.options[select.selectedIndex],f=o.dataset.forecast.split('|').map(Number),a=o.dataset.actual.split('|').map(Number),m=o.dataset.months.split('|'),all=f.concat(a),lo=Math.min.apply(null,all),hi=Math.max.apply(null,all),pad=Math.max((hi-lo)*.15,root.dataset.unit==='proportion'?.005:.25);lo-=pad;hi+=pad;var x=function(i){return 58+i*664/Math.max(1,a.length-1);},y=function(v){return 142-(v-lo)*112/Math.max(1e-9,hi-lo);},pts=function(v){return v.map(function(n,i){return x(i).toFixed(1)+','+y(n).toFixed(1);}).join(' ');};svg.replaceChildren();[0,.5,1].forEach(function(q){var yy=142-q*112,val=lo+q*(hi-lo);add('line',{x1:58,x2:722,y1:yy,y2:yy,class:'explorer-grid'});add('text',{x:50,y:yy+4,'text-anchor':'end',class:'explorer-axis'},fmt(val));});add('polyline',{points:pts(f),class:'explorer-forecast'});add('polyline',{points:pts(a),class:'explorer-actual'});add('circle',{cx:x(f.length-1),cy:y(f[f.length-1]),r:4,class:'explorer-dot-forecast'});add('circle',{cx:x(a.length-1),cy:y(a[a.length-1]),r:4,class:'explorer-dot-actual'});add('text',{x:58,y:164,'text-anchor':'start',class:'explorer-axis'},m[0]);add('text',{x:722,y:164,'text-anchor':'end',class:'explorer-axis'},m[m.length-1]);var gap=a[a.length-1]-f[f.length-1];summary.textContent=o.dataset.name+' — actual '+fmt(a[a.length-1])+', fixed forecast '+fmt(f[f.length-1])+' ('+(gap>=0?'+':'')+(root.dataset.unit==='proportion'?(gap*100).toFixed(Number(root.dataset.digits||1))+'pp':fmt(gap))+', latest month)';document.querySelectorAll('.distribution-dot').forEach(function(d){d.classList.toggle('selected',d.dataset.providerId===o.value);});}",
+  "select.addEventListener('change',draw);document.querySelectorAll('.distribution-dot[data-provider-id]').forEach(function(dot){function choose(){var opt=Array.from(select.options).find(function(o){return o.value===dot.dataset.providerId;});if(opt){select.value=opt.value;draw();root.scrollIntoView({behavior:'smooth',block:'nearest'});}}dot.addEventListener('click',choose);dot.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();choose();}});});draw();});"
+)
 
 core_normalise_ae_provider_watchlist <- function(
     watchlist, higher_is_better = TRUE, window_months = 6L) {
   assert_columns(watchlist, c(
     "data_through_month", "analysis_trust_id", "analysis_trust_name",
-    "latest_actual_performance", "six_month_gap_to_trajectory_pp",
+    "latest_actual_performance", "latest_gap_to_trajectory_pp",
+    "latest_expected_performance", "trajectory_gap_basis",
     "signal", "signal_evidence"
   ), "A&E provider watchlist")
   if (!nrow(watchlist)) return(data.table::data.table(
     metric_id = character(), entity_id = character(), entity_name = character(),
     data_through_month = data.table::as.IDate(character()),
     signal_months_n = integer(), favourable_gap_native = numeric(),
+    latest_error_native = numeric(), latest_expected_value = numeric(),
+    trajectory_gap_basis = character(),
     signal = character(), signal_evidence = character(), latest_value = numeric()
   ))
   direction <- if (isTRUE(higher_is_better)) 1 else -1
@@ -319,7 +469,10 @@ core_normalise_ae_provider_watchlist <- function(
     data_through_month = data.table::as.IDate(watchlist$data_through_month),
     signal_months_n = as.integer(signal_months),
     favourable_gap_native = direction *
-      watchlist$six_month_gap_to_trajectory_pp / 100,
+      watchlist$latest_gap_to_trajectory_pp / 100,
+    latest_error_native = watchlist$latest_gap_to_trajectory_pp / 100,
+    latest_expected_value = watchlist$latest_expected_performance,
+    trajectory_gap_basis = watchlist$trajectory_gap_basis,
     signal = data.table::fcase(
       watchlist$signal == "sustained_above_trajectory" & direction > 0,
       "sustained_favourable",
@@ -338,7 +491,8 @@ core_normalise_ae_provider_watchlist <- function(
 
 build_provider_watch_outturn <- function(
     metric_row, overview_row, watchlist, benchmark_value, benchmark_note,
-    template_path, output_path, provider_status_note = "") {
+    template_path, output_path, provider_status_note = "",
+    provider_path = data.table::data.table(), provider_materiality_native) {
   assert_columns(metric_row, c(
     "metric_id", "display_name", "unit", "digits", "data_source_label",
     "data_source_url"
@@ -366,23 +520,11 @@ build_provider_watch_outturn <- function(
   if (!is.finite(as.numeric(data_month))) {
     data_month <- data.table::as.IDate(overview_row$latest_month[1L])
   }
-  evidence <- unique(watchlist[
-    is.finite(favourable_gap_native) & !is.na(signal_evidence), signal_evidence
-  ])
-  evidence_note <- if (length(evidence) && all(
-    evidence == "genuine_release_vintages"
-  )) {
-    "All assessed signals use forecasts archived before each monthly release."
-  } else {
-    paste0(
-      "The archive is still building; signal rows state whether they use ",
-      "archived release forecasts, a historical backtest, or both."
-    )
-  }
   status_note <- paste(
-    "Signals show sustained departures from each provider's own archived outlook.",
-    "A low performer can be improving, and a high performer can be deteriorating.",
-    evidence_note,
+    "Each provider's six actual months are compared with one forecast path fixed",
+    "before that window. Both lines begin at the same observed value.",
+    "The displayed gap is the latest actual minus the fixed forecast for that same month.",
+    "A low performer can therefore be improving, while a high performer can be deteriorating.",
     if (!is.na(provider_status_note) && nzchar(trimws(provider_status_note))) {
       paste("Status:", provider_status_note)
     } else {
@@ -411,18 +553,20 @@ build_provider_watch_outturn <- function(
     DATA_MONTH = performance_format_month(data_month),
     COMMENTARY = performance_html_escape(commentary),
     PROVIDER_DISTRIBUTION = core_provider_distribution_svg(
-      watchlist, metric_row, benchmark_value
+      watchlist, metric_row, benchmark_value, provider_materiality_native
     ),
+    PROVIDER_EXPLORER = core_provider_explorer_html(provider_path, metric_row),
+    PROVIDER_EXPLORER_SCRIPT = provider_explorer_script(),
     PROVIDERS_ASSESSED = as.character(assessed),
     PROVIDERS_FAVOURABLE = as.character(favourable),
     PROVIDERS_ADVERSE = as.character(adverse),
     PROVIDERS_WITHOUT = as.character(without),
     PROVIDER_STATUS_NOTE = performance_html_escape(status_note),
     FAVOURABLE_ROWS = core_signal_rows_html(
-      watchlist, "sustained_favourable", metric_row
+      watchlist, "sustained_favourable", metric_row, provider_path
     ),
     ADVERSE_ROWS = core_signal_rows_html(
-      watchlist, "sustained_adverse", metric_row
+      watchlist, "sustained_adverse", metric_row, provider_path
     ),
     BENCHMARK_NOTE = performance_html_escape(benchmark_note),
     DATA_SOURCE_LABEL = performance_html_escape(
@@ -536,19 +680,32 @@ core_outlook_commentary <- function(
   movement <- if (overview_row$expected_direction == "improving") {
     "improve"
   } else if (overview_row$expected_direction == "deteriorating") {
-    "deteriorate"
+    "worsen"
   } else {
     "remain broadly stable"
   }
+  movement_preposition <- if (
+    overview_row$expected_direction == "broadly_stable"
+  ) " at " else " to "
   status <- if (overview_row$trajectory_status == "on_trajectory") {
     "on trajectory"
   } else {
     "off course"
   }
-  provider_sentence <- if (include_provider) paste0(
-    " Sustained favourable/adverse provider signals: ",
-    overview_row$providers_favourable, "/", overview_row$providers_adverse, "."
-  ) else ""
+  provider_sentence <- if (include_provider) {
+    favourable <- overview_row$providers_favourable[1L]
+    adverse <- overview_row$providers_adverse[1L]
+    if (adverse > favourable) paste0(
+      " Across providers, sustained adverse signals outnumber favourable ones (",
+      adverse, " to ", favourable, ")."
+    ) else if (favourable > adverse) paste0(
+      " Across providers, sustained favourable signals outnumber adverse ones (",
+      favourable, " to ", adverse, ")."
+    ) else paste0(
+      " Across providers, sustained favourable and adverse signals are balanced at ",
+      favourable, " each."
+    )
+  } else ""
   driver_sentence <- core_outlook_forecast_driver_sentence(
     overview_row, component_forecasts, overview_row$flat_threshold_native[1L]
   )
@@ -564,10 +721,12 @@ core_outlook_commentary <- function(
     ""
   }
   paste0(
-    overview_row$display_name, " is forecast to ", movement, " at the next release, from ",
+    "The latest ", overview_row$display_name, " result was ",
     performance_format_value(
       overview_row$latest_value, overview_row$unit, overview_row$digits
-    ), " to ", performance_format_value(
+    ), ". For the next release, it is expected to ", movement,
+    movement_preposition,
+    performance_format_value(
       overview_row$forecast_value, overview_row$unit, overview_row$digits
     ), ".", driver_sentence, reversal_sentence,
     " The current projection is ", status, " for ",
@@ -651,14 +810,22 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
                                       forecast_components = data.table::data.table(),
                                       community_service_summary = data.table::data.table(),
                                       edition = "forecast",
-                                      publication_status = "pilot") {
+                                      publication_status = "pilot",
+                                      diagnostic_html = "",
+                                      diagnostic_title = "What changed?",
+                                      diagnostic_subtitle = "The components behind the latest movement",
+                                      diagnostic_commentary = "",
+                                      diagnostic_compact_html = "",
+                                      provider_path = data.table::data.table(),
+                                      provider_materiality_native) {
   template <- paste(readLines(template_path, warn = FALSE), collapse = "\n")
   targets <- data.table::copy(targets)
   targets[, target_month := data.table::as.IDate(target_month)]
   provider_assessed <- overview_row$providers_assessed[1L]
   provider_rule <- paste0(
-    "Signals show sustained departures from each provider's own archived outlook. A low ",
-    "performer can be improving, and a high performer can be deteriorating."
+    "Six actual months are compared with one forecast path fixed before that window. ",
+    "Both lines begin at the same observed value. A low performer can be improving, ",
+    "while a high performer can be deteriorating."
   )
   if (is.na(provider_status_note)) provider_status_note <- ""
   if (!is.na(provider_status_note) && nzchar(trimws(provider_status_note))) {
@@ -717,23 +884,39 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
   } else {
     NA_real_
   }
+  actual_movement <- if (is.finite(actual_value)) {
+    performance_actual_movement(overview_row[1L])
+  } else {
+    list(direction = "not_available", label = "Not available", difference = NA_real_)
+  }
   actual_note <- if (is.finite(actual_value)) {
-    performance_outturn_note(overview_row[1L])
+    paste0(
+      actual_movement$label, " from the previous result · ",
+      performance_outturn_note(overview_row[1L])
+    )
   } else {
     "Not yet released"
   }
   commentary <- if (is.finite(actual_value)) {
+    movement_clause <- if (actual_movement$direction == "stable") {
+      "was broadly unchanged"
+    } else {
+      tolower(actual_movement$label)
+    }
     paste0(
       "The published result was ",
       performance_format_value(
         actual_value, metric_row$unit[1L], metric_row$digits[1L]
-      ), ". It was ", actual_note, ". The provider distribution and trajectory ",
-      "watch have been refreshed using the new release."
+      ), ". It ", movement_clause, " from the previous result and was ",
+      performance_outturn_note(overview_row[1L]), "."
     )
   } else {
     core_outlook_commentary(
       overview_row[1L], include_provider_page, forecast_components
     )
+  }
+  if (!is.na(diagnostic_commentary) && nzchar(trimws(diagnostic_commentary))) {
+    commentary <- paste(commentary, diagnostic_commentary)
   }
   replacements <- list(
     PAGE_TITLE = paste0(
@@ -772,9 +955,12 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
       overview_row$latest_value[1L], metric_row$unit[1L], metric_row$digits[1L]
     ),
     LATEST_MONTH = performance_format_month(overview_row$latest_month[1L]),
-    LATEST_COMPARISON = performance_html_escape(
+    BASELINE_LABEL = if (is_outturn) "At forecast" else "Latest",
+    LATEST_COMPARISON = performance_html_escape(if (is_outturn) {
+      "Known when the forecast was made"
+    } else {
       performance_latest_comparison_text(overview_row[1L])
-    ),
+    }),
     ACTUAL_VALUE = if (is.finite(actual_value)) performance_format_value(
       actual_value, metric_row$unit[1L], metric_row$digits[1L]
     ) else "—",
@@ -788,6 +974,7 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
     TARGET_LABEL = performance_html_escape(overview_row$target_label[1L]),
     TARGET_GAP = performance_html_escape(performance_target_gap_text(overview_row[1L])),
     COMMENTARY = performance_html_escape(commentary),
+    WHAT_CHANGED_CONTENT = diagnostic_compact_html,
     RECENT_CHART = core_recent_forecast_svg(
       national_panel, national_next, metric_row, actual_value
     ),
@@ -795,13 +982,17 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
       national_panel, national_projection, targets, metric_row
     ),
     PROVIDER_DISTRIBUTION = core_provider_distribution_svg(
-      watchlist, metric_row, overview_row$target_value[1L]
+      watchlist, metric_row, overview_row$target_value[1L],
+      provider_materiality_native
     ),
+    PROVIDER_EXPLORER = core_provider_explorer_html(provider_path, metric_row),
+    PROVIDER_EXPLORER_SCRIPT = provider_explorer_script(),
     PROVIDERS_ASSESSED = as.character(provider_assessed),
     PROVIDERS_FAVOURABLE = as.character(overview_row$providers_favourable[1L]),
     PROVIDERS_ADVERSE = as.character(overview_row$providers_adverse[1L]),
     PROVIDERS_WITHOUT = as.character(overview_row$providers_no_signal[1L]),
     PROVIDER_STATUS_NOTE = performance_html_escape(provider_rule),
+    PROVIDER_DATA_MONTH = performance_format_month(service_month),
     PROVIDER_PAGE_CLASS = if (include_provider_page) "" else "provider-omitted",
     PROVIDER_AVAILABILITY_NOTE = performance_html_escape(
       if (include_provider_page) {
@@ -811,10 +1002,10 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
       }
     ),
     FAVOURABLE_ROWS = core_signal_rows_html(
-      watchlist, "sustained_favourable", metric_row
+      watchlist, "sustained_favourable", metric_row, provider_path
     ),
     ADVERSE_ROWS = core_signal_rows_html(
-      watchlist, "sustained_adverse", metric_row
+      watchlist, "sustained_adverse", metric_row, provider_path
     ),
     BENCHMARK_LABEL = performance_html_escape(metric_row$benchmark_label[1L]),
     DATA_SOURCE_LABEL = performance_html_escape(metric_row$data_source_label[1L]),
@@ -827,6 +1018,10 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
     SERVICES_COMPLETE = as.character(service_page$services_complete),
     SERVICE_ROWS = service_page$rows_html,
     SERVICE_NOTE = performance_html_escape(service_page$note),
+    DIAGNOSTIC_PAGE_CLASS = if (nzchar(diagnostic_html)) "" else "diagnostic-omitted",
+    DIAGNOSTIC_TITLE = performance_html_escape(diagnostic_title),
+    DIAGNOSTIC_SUBTITLE = performance_html_escape(diagnostic_subtitle),
+    DIAGNOSTIC_CONTENT = diagnostic_html,
     GENERATED_AT = format(Sys.time(), "%d %B %Y, %H:%M %Z")
   )
   output <- performance_fill_template(template, replacements)

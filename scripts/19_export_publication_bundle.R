@@ -113,7 +113,10 @@ if (publication_mode == "forecast") {
   html_files <- unique(c(
     "output/releases/nhs-performance-outturn-latest.html",
     outturn_detail_html,
-    provider_watch_html
+    provider_watch_html,
+    if (file.exists("output/releases/ae-george-eliot-flow-deep-dive-latest.html")) {
+      "output/releases/ae-george-eliot-flow-deep-dive-latest.html"
+    } else character()
   ))
 }
 

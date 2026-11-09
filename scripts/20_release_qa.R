@@ -1,6 +1,7 @@
 source("R/utils.R")
 source("R/national_forecast.R")
 source("R/release_qa.R")
+source("R/edition_archive.R")
 
 required_files <- c(
   "data-interim/core/national_panel.csv",
@@ -30,7 +31,18 @@ required_files <- c(
   "output/qa/ucr_provider_model_eligibility.csv",
   "output/qa/community_provider_import_coverage.csv",
   "output/qa/community_provider_import_exclusions.csv",
-  "output/qa/community_provider_model_eligibility.csv"
+  "output/qa/community_provider_model_eligibility.csv",
+  "output/diagnostics/ae_summary.csv",
+  "output/diagnostics/ae_provider_contributions.csv",
+  "output/diagnostics/rtt_summary.csv",
+  "output/diagnostics/rtt_provider_contributions.csv",
+  "output/diagnostics/rtt_specialty_contributions.csv",
+  "output/diagnostics/ambulance_cat2_summary.csv",
+  "output/diagnostics/diagnostics_6w_summary.csv",
+  "output/diagnostics/cancer_62d_summary.csv",
+  "output/diagnostics/ucr_2h_summary.csv",
+  "output/diagnostics/community_18w_summary.csv",
+  "output/diagnostics/talking_therapies_6w_summary.csv"
 )
 missing_files <- required_files[!file.exists(required_files)]
 if (length(missing_files)) {
@@ -67,6 +79,46 @@ metric_config[, `:=`(
 included_metrics <- model_status[
   model_status %in% c("included", "included_national_only"), metric_id
 ]
+ae_diagnostic <- read_csv("output/diagnostics/ae_summary.csv")
+rtt_diagnostic <- read_csv("output/diagnostics/rtt_summary.csv")
+add_check(
+  "diagnostics", "ae4h_all", "ae_breadth_and_demand_outputs_valid", "fatal",
+  nrow(ae_diagnostic) == 1L &&
+    ae_diagnostic$providers_compared >= 50L &&
+    ae_diagnostic$share_providers_deteriorating >= 0 &&
+    ae_diagnostic$share_providers_deteriorating <= 1 &&
+    is.finite(ae_diagnostic$attendance_change_year_pct),
+  paste(ae_diagnostic$providers_compared, "providers compared;",
+        round(100 * ae_diagnostic$share_providers_deteriorating),
+        "% deteriorating"),
+  "output/diagnostics/ae_summary.csv"
+)
+add_check(
+  "diagnostics", "rtt_18w", "rtt_stock_flow_and_specialty_outputs_valid", "fatal",
+  nrow(rtt_diagnostic) == 1L &&
+    rtt_diagnostic$providers_compared >= 50L &&
+    is.finite(rtt_diagnostic$new_rtt_periods) &&
+    is.finite(rtt_diagnostic$admitted_completions) &&
+    is.finite(rtt_diagnostic$nonadmitted_completions),
+  paste(rtt_diagnostic$providers_compared, "providers compared; list change",
+        rtt_diagnostic$list_change),
+  "output/diagnostics/rtt_summary.csv"
+)
+for (metric in setdiff(included_metrics, "rtt_18w")) {
+  diagnostic_path <- file.path("output/diagnostics", paste0(metric, "_summary.csv"))
+  diagnostic_row <- read_csv(diagnostic_path)
+  add_check(
+    "diagnostics", metric, "what_changed_output_valid", "fatal",
+    nrow(diagnostic_row) == 1L &&
+      is.finite(diagnostic_row$month_change_native) &&
+      is.finite(diagnostic_row$year_change_native) &&
+      !is.na(diagnostic_row$interpretation) &&
+      nzchar(diagnostic_row$interpretation),
+    paste("Latest month", diagnostic_row$latest_month, "; monthly change",
+          diagnostic_row$month_change_native),
+    diagnostic_path
+  )
+}
 performance_method_register <- read_csv(
   "output/performance/forecast_method_register.csv"
 )
@@ -627,14 +679,14 @@ if (file.exists(ae_watch_path)) {
   ae_candidates <- list(
     favourable = utils::head(ae_watch[
       signal == "sustained_above_trajectory"
-    ][order(-six_month_gap_to_trajectory_pp)], 3L),
+    ][order(-latest_gap_to_trajectory_pp)], 3L),
     adverse = utils::head(ae_watch[
       signal == "sustained_below_trajectory"
-    ][order(six_month_gap_to_trajectory_pp)], 3L),
+    ][order(latest_gap_to_trajectory_pp)], 3L),
     near_threshold = utils::head(ae_watch[
       signal == "within_sustained_threshold" &
-        is.finite(six_month_gap_to_trajectory_pp)
-    ][order(-abs(six_month_gap_to_trajectory_pp))], 3L)
+        is.finite(latest_gap_to_trajectory_pp)
+    ][order(-abs(latest_gap_to_trajectory_pp))], 3L)
   )
   for (group in names(ae_candidates)) if (nrow(ae_candidates[[group]])) {
     provider_review_index <- provider_review_index + 1L
@@ -644,7 +696,7 @@ if (file.exists(ae_watch_path)) {
       entity_name = analysis_trust_name,
       review_group = group,
       signal,
-      gap_native = six_month_gap_to_trajectory_pp / 100,
+      gap_native = latest_gap_to_trajectory_pp / 100,
       direction_share = six_month_direction_share,
       latest_error_same_direction,
       signal_evidence
@@ -712,14 +764,23 @@ add_check(
   },
   "output/performance/overview_manifest.csv"
 )
-manifest_is_pilot <- "publication_status" %in% names(overview_manifest) &&
+expected_publication_status <- nhs_outlook_publication_status()
+expected_publication_label <- if (expected_publication_status == "pilot") {
+  "Pilot"
+} else {
+  tools::toTitleCase(as.character(overview_manifest$publication_mode[1L]))
+}
+manifest_has_expected_status <- "publication_status" %in% names(overview_manifest) &&
   nrow(overview_manifest) == 1L &&
-  overview_manifest$publication_status[1L] == "pilot"
+  overview_manifest$publication_status[1L] == expected_publication_status
 add_check(
-  "publication", "ALL", "publication_status_is_pilot", "fatal",
-  manifest_is_pilot,
-  if (manifest_is_pilot) "Publication status: pilot." else {
-    "Overview manifest must identify this publication as pilot."
+  "publication", "ALL", "publication_status_matches_release", "fatal",
+  manifest_has_expected_status,
+  if (manifest_has_expected_status) {
+    paste("Publication status:", expected_publication_status, ".")
+  } else {
+    paste("Overview manifest must identify this publication as",
+          expected_publication_status, ".")
   },
   "output/performance/overview_manifest.csv"
 )
@@ -727,6 +788,21 @@ publication_mode <- if (manifest_has_mode) {
   overview_manifest$publication_mode[1L]
 } else {
   "invalid"
+}
+if (manifest_has_mode && "issue_date" %in% names(overview_manifest)) {
+  frozen_edition_root <- file.path(
+    "output", "editions", as.character(overview_manifest$issue_date[1L]),
+    publication_mode
+  )
+  frozen_verification <- tryCatch({
+    verify_frozen_outlook_edition(frozen_edition_root)
+    list(passed = TRUE, detail = paste("Verified", frozen_edition_root))
+  }, error = function(e) list(passed = FALSE, detail = conditionMessage(e)))
+  add_check(
+    "publication", "ALL", "frozen_edition_is_complete", "fatal",
+    frozen_verification$passed, frozen_verification$detail,
+    file.path(frozen_edition_root, "input_manifest.csv")
+  )
 }
 published_snapshot_path <- "output/performance/latest_published_forecast_rows.csv"
 add_check(
@@ -876,20 +952,20 @@ if (file.exists(publication_manifest_path)) {
       "output/performance/overview_metric_rows.csv"
     )
     add_check(
-      "publication", "ALL", "overview_html_displays_pilot", "fatal",
-      grepl("Pilot", overview_html, fixed = TRUE),
-      "Pilot label is rendered in the underlying main publication HTML.",
+      "publication", "ALL", "overview_html_displays_release_status", "fatal",
+      grepl(expected_publication_label, overview_html, fixed = TRUE),
+      paste(expected_publication_label,
+            "label is rendered in the underlying main publication HTML."),
       overview_html_path
     )
     add_check(
-      "publication", "ALL", "overview_has_eight_web_detail_links", "fatal",
-      detail_links_present &&
-        grepl('<th class="detail-head">Detail</th>', overview_html, fixed = TRUE),
+      "publication", "ALL", "overview_has_eight_indicator_links", "fatal",
+      detail_links_present,
       paste(sum(vapply(
         current_rows$deep_dive_file,
         function(x) grepl(paste0('href="', x, '"'), overview_html, fixed = TRUE),
         logical(1)
-      )), "configured Detail link(s) present."),
+      )), "configured indicator link(s) present."),
       overview_html_path
     )
     add_check(
@@ -934,7 +1010,11 @@ if (file.exists(publication_manifest_path)) {
       html <- paste(
         readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n"
       )
-      grepl("Pilot · Outturn", html, fixed = TRUE) &&
+      grepl(if (expected_publication_status == "pilot") {
+        "Pilot · Outturn"
+      } else {
+        "Outturn"
+      }, html, fixed = TRUE) &&
         !grepl("Not yet released", html, fixed = TRUE)
     }, logical(1)))
     add_check(
@@ -945,10 +1025,10 @@ if (file.exists(publication_manifest_path)) {
       "output/performance/outturn_metric_rows.csv"
     )
     add_check(
-      "publication", "ALL", "outturn_uses_previous_heading", "fatal",
-      grepl("<th>Previous</th>", outturn_html, fixed = TRUE) &&
+      "publication", "ALL", "outturn_uses_at_forecast_heading", "fatal",
+      grepl("<th>At forecast</th>", outturn_html, fixed = TRUE) &&
         !grepl("<th>Latest</th>", outturn_html, fixed = TRUE),
-      "Outturn baseline column is labelled Previous, not Latest.",
+      "Outturn baseline column is labelled At forecast, not Latest or Previous.",
       outturn_html_path
     )
   }
@@ -959,7 +1039,7 @@ if (file.exists(publication_manifest_path)) {
       "artifact_role" %in% names(publication_manifest) &&
       nrow(publication_manifest) > 0L &&
       all(publication_manifest$publication_mode == publication_mode) &&
-      all(publication_manifest$publication_status == "pilot") &&
+      all(publication_manifest$publication_status == expected_publication_status) &&
       all(publication_manifest$edition == publication_mode) &&
       sum(publication_manifest$artifact_role == "overview") == 1L &&
       if (publication_mode == "outturn") {

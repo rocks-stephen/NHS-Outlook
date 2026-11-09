@@ -2,16 +2,38 @@ source("R/utils.R")
 source("R/national_forecast.R")
 source("R/performance_outlook.R")
 source("R/core_outlook.R")
+source("R/core_import.R")
+source("R/diagnostics.R")
+source("R/edition_archive.R")
 
 publication_mode <- nhs_outlook_publication_mode()
 publication_issue_date <- nhs_outlook_issue_date()
 publication_status <- nhs_outlook_publication_status()
 issue_day <- format(as.Date(publication_issue_date), "%Y-%m-%d")
+edition_revision <- normalise_outlook_edition_revision(
+  getOption("nhs.outlook.edition_revision", "")
+)
+revision_suffix <- if (nzchar(edition_revision)) {
+  paste0("-revision-", edition_revision)
+} else {
+  ""
+}
+
+# Check the immutable archive before writing snapshots, manifests or rendered
+# pages. A revised analytical edition must be explicitly named r1, r2, etc.
+if (isTRUE(getOption("nhs.outlook.freeze_edition", TRUE))) {
+  assert_outlook_edition_available(
+    issue_date = publication_issue_date,
+    publication_mode = publication_mode,
+    edition_revision = edition_revision
+  )
+}
 
 required_files <- c(
   "config/performance_metrics.csv",
   "config/national_model.csv",
   "config/provider_model.csv",
+  "config/core_model.csv",
   "config/core_targets.csv",
   "output/national/next_release_forecast.csv",
   "output/national/reference_forecast.csv",
@@ -25,6 +47,7 @@ required_files <- c(
   "data-interim/national_month_stage1.csv",
   "data-interim/core/national_panel.csv",
   "data-interim/core/community_waits_service_summary.csv",
+  "data-interim/core/downloaded_source_manifest.csv",
   "reports/nhs_performance_outlook_template.html",
   "reports/core_metric_outlook_template.html",
   "reports/provider_watch_outturn_template.html"
@@ -72,6 +95,13 @@ if (!nrow(configured_active)) stop("No performance metrics are active.")
 
 national_config <- read_key_value_config("config/national_model.csv")
 provider_config <- read_key_value_config("config/provider_model.csv")
+core_model_config <- data.table::fread(
+  "config/core_model.csv", encoding = "UTF-8"
+)
+assert_columns(
+  core_model_config, c("metric_id", "signal_materiality_native"),
+  "core model config"
+)
 next_release <- read_performance_csv(
   "output/national/next_release_forecast.csv",
   c("data_through_month", "forecast_month")
@@ -151,6 +181,19 @@ core_national_panel <- read_performance_csv(
 community_service_summary <- read_performance_csv(
   "data-interim/core/community_waits_service_summary.csv", "calendar_month"
 )
+rtt_download_manifest <- read_performance_csv(
+  "data-interim/core/downloaded_source_manifest.csv", "activity_month"
+)
+rtt_diagnostics <- build_rtt_diagnostics(rtt_download_manifest)
+core_diagnostics <- setNames(lapply(
+  metric_config[adapter == "core_metric", metric_id], function(metric) {
+    if (metric == "rtt_18w") return(rtt_diagnostics)
+    build_core_metric_diagnostics(
+      core_national_panel,
+      metric_config[metric_id == metric]
+    )
+  }
+), metric_config[adapter == "core_metric", metric_id])
 history <- data.table::rbindlist(list(
   ae_history,
   core_national_panel[, .(metric_id, calendar_month, value)]
@@ -226,7 +269,9 @@ if (publication_mode == "forecast") {
     published_snapshot,
     file.path(
       output_data_dir,
-      paste0("published_forecast_rows_", issue_day, ".csv")
+      paste0(
+        "published_forecast_rows_", issue_day, revision_suffix, ".csv"
+      )
     )
   )
   outturn_rows <- forecast_rows[0L]
@@ -326,7 +371,8 @@ dated_filename <- NA_character_
 outturn_filename <- NA_character_
 if (publication_mode == "forecast") {
   dated_filename <- paste0(
-    "nhs-performance-outlook-forecast-", issue_day, ".html"
+    "nhs-performance-outlook-forecast-", issue_day,
+    revision_suffix, ".html"
   )
   dated_path <- file.path(output_release_dir, dated_filename)
   build_performance_outlook_page(
@@ -350,7 +396,9 @@ if (publication_mode == "forecast") {
     overwrite = TRUE
   )
 } else {
-  outturn_filename <- paste0("nhs-performance-outturn-", issue_day, ".html")
+  outturn_filename <- paste0(
+    "nhs-performance-outturn-", issue_day, revision_suffix, ".html"
+  )
   outturn_path <- file.path(output_release_dir, outturn_filename)
   build_performance_outlook_page(
     outturn_rows, "reports/nhs_performance_outlook_template.html", outturn_path,
@@ -423,6 +471,16 @@ if (publication_mode %in% c("forecast", "outturn")) {
     } else {
       core_empty_provider_watchlist()
     }
+    provider_path_file <- file.path(metric_dir, "provider_fixed_six_month_path.csv")
+    provider_path_core <- if (
+      file.exists(provider_path_file) && file.info(provider_path_file)$size > 0
+    ) {
+      read_performance_csv(
+        provider_path_file, c("target_month", "origin_month")
+      )
+    } else {
+      data.table::data.table()
+    }
     output_file <- if (publication_mode == "forecast") {
       metric_row$deep_dive_file[1L]
     } else {
@@ -455,14 +513,31 @@ if (publication_mode %in% c("forecast", "outturn")) {
         data.table::data.table()
       },
       edition = publication_mode,
-      publication_status = publication_status
+      publication_status = publication_status,
+      diagnostic_html = core_diagnostics[[metric]]$html,
+      diagnostic_title = paste0(metric_row$short_name[1L], ": what changed?"),
+      diagnostic_subtitle = if (metric == "rtt_18w") {
+        "Stock, flow and the specialties behind the latest movement"
+      } else if (metric == "community_18w") {
+        "Waiting-list volumes behind the headline rate; service detail follows"
+      } else if (!is.finite(core_diagnostics[[metric]]$summary$denominator_change[1L])) {
+        "How the headline measure moved over the latest month and year"
+      } else {
+        "The activity and counts behind the latest movement"
+      },
+      diagnostic_compact_html = core_diagnostics[[metric]]$compact_html,
+      provider_path = provider_path_core,
+      provider_materiality_native = core_model_config[
+        metric_id == metric, signal_materiality_native
+      ][1L]
     )
     file.copy(
       output_path,
       file.path(
         output_release_dir,
         sub(
-          "-latest\\.html$", paste0("-", issue_day, ".html"),
+          "-latest\\.html$",
+          paste0("-", issue_day, revision_suffix, ".html"),
           basename(output_path)
         )
       ),
@@ -503,6 +578,19 @@ if (publication_mode == "outturn") {
       benchmark_value <- 0.95
       benchmark_note <- metric_row$benchmark_label[1L]
       provider_status_note <- ""
+      provider_materiality_native <- parse_numeric_setting(
+        provider_config, "persistent_materiality_pp", 0
+      ) / 100
+      provider_path <- read_performance_csv(
+        "output/provider/latest_six_month_fixed_outlook.csv",
+        c("target_month", "fixed_origin_month")
+      )
+      provider_path <- data.table::data.table(
+        entity_id = provider_path$analysis_trust_id,
+        target_month = provider_path$target_month,
+        predicted_value = provider_path$predicted_performance,
+        actual_value = provider_path$actual_performance
+      )
     } else {
       model_status <- core_model_status[metric_id == metric, model_status][1L]
       if (is.na(model_status) || model_status != "included") next
@@ -521,6 +609,21 @@ if (publication_mode == "outturn") {
       provider_status_note <- core_model_status[
         metric_id == metric, status_reason
       ][1L]
+      provider_materiality_native <- core_model_config[
+        metric_id == metric, signal_materiality_native
+      ][1L]
+      provider_path_file <- file.path(
+        "output/core", metric, "provider_fixed_six_month_path.csv"
+      )
+      provider_path <- if (
+        file.exists(provider_path_file) && file.info(provider_path_file)$size > 0
+      ) {
+        read_performance_csv(
+          provider_path_file, c("target_month", "origin_month")
+        )
+      } else {
+        data.table::data.table()
+      }
     }
     if (!nrow(provider_watch)) {
       stop("No current provider rows were available for outturn metric ", metric, ".")
@@ -550,13 +653,19 @@ if (publication_mode == "outturn") {
       benchmark_note = benchmark_note,
       template_path = "reports/provider_watch_outturn_template.html",
       output_path = output_path,
-      provider_status_note = provider_status_note
+      provider_status_note = provider_status_note,
+      provider_path = provider_path,
+      provider_materiality_native = provider_materiality_native
     )
     file.copy(
       output_path,
       file.path(
         output_release_dir,
-        sub("-latest\\.html$", paste0("-", issue_day, ".html"), output_file)
+        sub(
+          "-latest\\.html$",
+          paste0("-", issue_day, revision_suffix, ".html"),
+          output_file
+        )
       ),
       overwrite = TRUE
     )
@@ -583,6 +692,7 @@ data.table::fwrite(
 data.table::fwrite(data.table::data.table(
   issue_date = issue_day,
   publication_mode = publication_mode,
+  edition_revision = edition_revision,
   publication_status = publication_status,
   source_forecast_issue_date = if (publication_mode == "outturn") {
     format(as.Date(unique(outturn_rows$publication_issue_date)[1L]), "%Y-%m-%d")
@@ -604,6 +714,19 @@ data.table::fwrite(data.table::data.table(
   outturn_output_file = outturn_filename,
   outturn_provider_watch_files = nrow(outturn_provider_watch_manifest)
 ), file.path(output_data_dir, "overview_manifest.csv"))
+if (isTRUE(getOption("nhs.outlook.freeze_edition", TRUE))) {
+  freeze_outlook_edition(
+    issue_date = publication_issue_date,
+    publication_mode = publication_mode,
+    publication_status = publication_status,
+    edition_revision = edition_revision,
+    source_forecast_issue_date = if (publication_mode == "outturn") {
+      unique(outturn_rows$publication_issue_date)[1L]
+    } else {
+      publication_issue_date
+    }
+  )
+}
 message(
   "NHS Performance Outlook ", publication_mode, " edition built with ",
   if (publication_mode == "forecast") nrow(forecast_rows) else nrow(outturn_rows),

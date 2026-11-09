@@ -1,6 +1,7 @@
 source("R/utils.R")
 source("R/national_forecast.R")
 source("R/monthly_outlook.R")
+source("R/diagnostics.R")
 
 national_config <- read_key_value_config("config/national_model.csv")
 provider_config <- read_key_value_config("config/provider_model.csv")
@@ -40,6 +41,8 @@ required_files <- c(
   "output/national/forecast_method.csv",
   "output/provider/latest_watchlist.csv",
   "output/provider/provider_signal_archive.csv",
+  "output/provider/provider_model_panel.csv",
+  "output/provider/latest_six_month_fixed_outlook.csv",
   "reports/ae_four_hour_outlook_template.html"
 )
 missing_files <- required_files[!file.exists(required_files)]
@@ -47,7 +50,7 @@ if (length(missing_files)) {
   stop(
     "Cannot build the monthly outlook; missing: ",
     paste(missing_files, collapse = ", "),
-    ". Run scripts/06_model_national.R and scripts/08_model_provider.R first."
+    ". Resume from ae_model_national or an earlier v2 stage."
   )
 }
 
@@ -70,6 +73,9 @@ empty_provider_signals <- function() {
     six_month_actual_average = numeric(),
     six_month_expected_average = numeric(),
     six_month_gap_to_trajectory_pp = numeric(),
+    latest_gap_to_trajectory_pp = numeric(),
+    latest_expected_performance = numeric(),
+    trajectory_gap_basis = character(),
     six_month_direction_share = numeric(),
     current_direction_streak_months = integer(),
     statistically_unusual_6m = logical(),
@@ -122,6 +128,14 @@ forecast_method <- read_outlook_csv(
     "backtest_first_target_month", "backtest_last_target_month"
   )
 )
+provider_model_panel <- read_outlook_csv(
+  "output/provider/provider_model_panel.csv", "calendar_month"
+)
+provider_fixed_path <- read_outlook_csv(
+  "output/provider/latest_six_month_fixed_outlook.csv",
+  c("target_month", "fixed_origin_month")
+)
+ae_diagnostics <- build_ae_diagnostics(national, provider_model_panel)
 
 template_path <- "reports/ae_four_hour_outlook_template.html"
 output_dir <- "output/releases"
@@ -167,7 +181,10 @@ build_ae_outlook_page(
   intermediate_target_performance = intermediate_target_performance,
   final_target_start_month = final_target_start_month,
   forecast_method = forecast_method,
-  forecast_components = forecast_components
+  forecast_components = forecast_components,
+  diagnostic_html = ae_diagnostics$html,
+  diagnostic_compact_html = ae_diagnostics$compact_html,
+  provider_path = provider_fixed_path
 )
 file.copy(
   current_path,
@@ -189,7 +206,9 @@ if (nrow(scored)) {
   data.table::setorder(scored, forecast_month, forecast_created_at_utc)
   result <- scored[.N]
   result_signals <- signal_archive[
-    signal_version == provider_config$release_forecast_version &
+    signal_version == paste0(
+      provider_config$release_forecast_version, "_latest_month_gap_v1"
+    ) &
       data_through_month == result$forecast_month[1L]
   ]
   if (!nrow(result_signals)) result_signals <- empty_provider_signals()
@@ -213,7 +232,10 @@ if (nrow(scored)) {
     intermediate_target_performance = intermediate_target_performance,
     final_target_start_month = final_target_start_month,
     forecast_method = forecast_method,
-    forecast_components = forecast_components
+    forecast_components = forecast_components,
+    diagnostic_html = ae_diagnostics$html,
+    diagnostic_compact_html = ae_diagnostics$compact_html,
+    provider_path = provider_fixed_path
   )
   if (identical(getOption("nhs.outlook.publication_mode"), "outturn")) {
     file.copy(

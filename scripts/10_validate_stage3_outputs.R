@@ -171,9 +171,32 @@ checks <- data.table::rbindlist(list(
     paste("rows:", nrow(watchlist))
   ),
   record_check(
+    "provider_gap_matches_fixed_path_endpoint",
+    !nrow(fixed_outlook) || {
+      endpoint <- fixed_outlook[
+        context_evidence != "observed_forecast_origin"
+      ][order(target_month), .SD[.N], by = analysis_trust_id][, .(
+        analysis_trust_id,
+        expected_endpoint = predicted_performance,
+        gap_endpoint_pp = 100 * (actual_performance - predicted_performance)
+      )]
+      compared <- merge(
+        watchlist[is.finite(latest_gap_to_trajectory_pp)], endpoint,
+        by = "analysis_trust_id", all.x = TRUE
+      )
+      nrow(compared) == nrow(endpoint) && all(
+        is.finite(compared$gap_endpoint_pp) &
+          abs(compared$latest_gap_to_trajectory_pp - compared$gap_endpoint_pp) < 1e-8 &
+          abs(compared$latest_expected_performance - compared$expected_endpoint) < 1e-8 &
+          compared$trajectory_gap_basis == "latest_month_fixed_path"
+      )
+    },
+    "Published gaps match the latest actual minus the same-month fixed forecast"
+  ),
+  record_check(
     "flagged_rows_meet_rule",
     !nrow(flagged) || all(
-      abs(flagged$six_month_gap_to_trajectory_pp) >= materiality &
+      abs(flagged$latest_gap_to_trajectory_pp) >= materiality &
       flagged$six_month_direction_share >= direction_share &
       flagged$latest_error_same_direction
     ),
@@ -195,10 +218,29 @@ checks <- data.table::rbindlist(list(
   ),
   record_check(
     "fixed_origin_six_month_context",
-    !nrow(fixed_outlook) || all(
-      fixed_outlook[, .N, by = analysis_trust_id]$N ==
-        parse_integer_setting(provider_config, "persistent_window_months", 2L)
-    ),
+    !nrow(fixed_outlook) || {
+      window <- parse_integer_setting(
+        provider_config, "persistent_window_months", 2L
+      )
+      fixed_check <- fixed_outlook[, .(
+        rows_n = .N,
+        origin_rows_n = sum(context_evidence == "observed_forecast_origin"),
+        origin_is_zero_gap = all(
+          residual_pp[context_evidence == "observed_forecast_origin"] == 0 &
+            predicted_performance[context_evidence == "observed_forecast_origin"] ==
+              actual_performance[context_evidence == "observed_forecast_origin"]
+        ),
+        forecast_rows_n = sum(
+          context_evidence == "historically_simulated_fixed_origin"
+        )
+      ), by = analysis_trust_id]
+      all(
+        fixed_check$rows_n == window + 1L &
+          fixed_check$origin_rows_n == 1L &
+          fixed_check$origin_is_zero_gap &
+          fixed_check$forecast_rows_n == window
+      )
+    },
     paste("providers:", data.table::uniqueN(fixed_outlook$analysis_trust_id))
   ),
   record_check(

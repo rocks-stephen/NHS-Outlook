@@ -82,12 +82,12 @@ build_substack_draft <- function(rows, manifest, edition, output_path) {
   edition_note <- if (edition == "forecast") c(
     "## What to watch",
     "",
-    "The detailed PDFs separate providers’ latest performance levels from sustained movement against their own archived trajectories. A trajectory signal requires six consecutive release surprises, at least five in the same direction, a material average gap and the latest month confirming the direction.",
+    "The detailed PDFs separate providers’ latest performance levels from sustained movement against a forecast path fixed before the six-month window. A trajectory signal requires at least five of six months to depart in the same direction, a material latest-month gap against the fixed forecast for that same month.",
     ""
   ) else c(
     "## Reading the update",
     "",
-    "Each result is compared with the exact forecast published before release. A result can be better or worse than the point forecast while still lying inside the 80% expected range. The provider-watch PDFs use the newly released observations to update the provider distribution and six-release trajectory screen.",
+    "Each result is compared with the exact forecast published before release. A result can improve or worsen, beat or miss the forecast, and still lie inside the 80% expected range. Provider-watch PDFs display the latest actual minus the fixed forecast for that same month. Six months of observations establish whether the direction is persistent.",
     ""
   )
   text <- c(

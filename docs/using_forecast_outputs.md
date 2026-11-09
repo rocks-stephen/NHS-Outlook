@@ -207,10 +207,13 @@ unusualness flag compares the six-month mean with that provider's earlier non-ov
 calibration history where at least 12 prior windows are available. The practical and
 statistical tests remain separate in the output.
 
-`signal_status` distinguishes a new signal, a continuing signal and one that is
-easing. `signal_evidence` distinguishes six genuine release vintages, a mixed window
-and a historical simulation. This lets the monthly product update continuously without
-resetting the provider's baseline every time new data arrive.
+For the A&E provider watch, the six expected monthly values are generated from one
+origin immediately before the six-month assessment window. The path is therefore held
+fixed while it is compared with six subsequent actuals; it is not re-forecast after
+each of those actuals becomes known. `signal_evidence` records this as
+`fixed_six_month_path_backtest`. “Historically simulated” means that the fixed path was
+recreated from the data that would have been available at its origin, rather than
+retrieved from a forecast that was genuinely archived on that date.
 
 Use these files and charts:
 
@@ -223,6 +226,39 @@ Use these files and charts:
 - `provider_flagged_trajectories.png`: actual and expected paths for the largest
   current signals;
 - `provider_next_release_extremes.png`: highest and lowest next-release forecasts.
+
+## What-changed diagnostic pages
+
+Every indicator detail product includes a compact what-changed panel on its first page. The panel uses
+the components retained in the validated import to explain the latest movement, while
+remaining descriptive rather than claiming causation. Where a reconciled numerator
+and denominator are available, the page reports changes in both. Where they are not,
+it says so explicitly and limits the interpretation to month-on-month and year-on-year
+movement. The compact placement is intended to help readers interpret the headline
+and charts without navigating to a separate diagnostic page.
+
+The A&E page reports the share and median change of comparable trusts, exact
+provider contributions to the national monthly rate movement, year-on-year
+attendance growth, patients seen within four hours and breaches. The demand/flow
+text is deliberately phrased as "consistent with" because unobserved acuity,
+staffing, beds and discharge constraints may also affect performance.
+
+The RTT page reads the latest two official full extracts and reports new RTT
+periods, admitted and non-admitted completions, incomplete pathways, pathways with
+a decision to admit, trust breadth and treatment-function contributions to the
+change in over-18-week pathways. New periods and completions do not fully reconcile
+the stock: transfers, corrections and reporting changes remain in an explicit
+residual. Community waiting-list service detail remains on its separate service page.
+Provider-level contributions and trajectory evidence are kept off the national
+what-changed page and on the provider page. Each spotlighted provider now has a compact
+six-month chart comparing actual performance with the path fixed before that window.
+
+Machine-readable outputs are written to `output/diagnostics/`:
+
+- `ae_summary.csv` and `ae_provider_contributions.csv`;
+- `rtt_summary.csv`, `rtt_provider_contributions.csv` and
+  `rtt_specialty_contributions.csv`.
+- `<metric_id>_summary.csv` for the remaining core indicators.
 
 The 2 percentage-point threshold and five-of-six direction rule are initial review
 choices, not results selected from the data. Change them in

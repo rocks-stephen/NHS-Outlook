@@ -69,6 +69,32 @@ For a backdated or reproducible build, first set
 `options(ae.refresh.start_stage = 14)` (or another documented stage) before sourcing
 the same entry point. The runner clears publication options after a successful run.
 
+## Correcting or rerendering a published edition
+
+Every successful script 17 build freezes its analytical inputs under
+`output/editions/YYYY-MM-DD/forecast/` or `output/editions/YYYY-MM-DD/outturn/`.
+The dated archive is authoritative; mutable `latest` files are not consulted when a
+past edition is rerendered.
+
+For a presentation, template or editorial correction, set the edition explicitly:
+
+```r
+options(
+  nhs.outlook.render_issue_date = as.Date("2026-10-08"),
+  nhs.outlook.render_mode = "outturn"
+)
+source("scripts/24_render_frozen_edition.R")
+```
+
+Outputs go to `output/rerenders/YYYY-MM-DD/MODE/` and never overwrite the published
+release automatically. By default the renderer combines current templates and rendering
+code with the frozen analytical inputs and regenerates both HTML and PDF files. To skip
+PDF export, set `options(nhs.outlook.render_pdf = FALSE)`. To reproduce the original visual templates, set
+`options(nhs.outlook.render_use_original_templates = TRUE)` before running it.
+
+Do not use the rerender route for an analytical correction. Correct the source or model,
+issue a formally revised edition, and retain both versions with a revision note.
+
 ## Pre-publication checklist
 
 - Confirm that all fatal checks pass in `output/qa/release_signoff.csv`; warnings require

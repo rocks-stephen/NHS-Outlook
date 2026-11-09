@@ -265,6 +265,27 @@ for each eligible provider metric. Those pages incorporate the new release into 
 provider distribution and six-release trajectory screen without presenting the
 post-release next-month forecast as part of the outturn.
 
+### Frozen editions and post-publication corrections
+
+Each successful performance-outlook build stores an immutable set of rendering inputs in
+`output/editions/YYYY-MM-DD/MODE/`. This keeps an older edition tied to its original
+forecast vintage and observations even after the live `latest` files move on.
+
+To rerender a past edition after a visual, template or editorial correction:
+
+```r
+options(
+  nhs.outlook.render_issue_date = as.Date("2026-10-08"),
+  nhs.outlook.render_mode = "outturn"
+)
+source("scripts/24_render_frozen_edition.R")
+```
+
+The renderer verifies the frozen files against their checksums and writes to
+`output/rerenders/YYYY-MM-DD/MODE/`; it regenerates HTML and PDFs but does not overwrite
+a live publication. See
+`docs/monthly_publication_workflow.md` for the correction and revision policy.
+
 `20_release_qa.R` is the final automated release gate. It consolidates the earlier
 structural checks, verifies source provenance and numerator/denominator arithmetic,
 profiles gaps and unusual latest changes, compares selected imported values with

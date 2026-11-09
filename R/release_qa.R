@@ -102,7 +102,9 @@ release_qa_html_pages <- function(path) {
   attributes <- sub("[\"']$", "", attributes)
   sum(vapply(strsplit(attributes, "[[:space:]]+"), function(classes) {
     any(classes %in% c("sheet", "page")) &&
-      !any(classes %in% c("provider-omitted", "service-omitted"))
+      !any(classes %in% c(
+        "provider-omitted", "service-omitted", "diagnostic-omitted"
+      ))
   }, logical(1)))
 }
 

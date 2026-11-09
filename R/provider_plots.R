@@ -92,13 +92,13 @@ plot_provider_sustained_deviations <- function(watchlist, config) {
       "No provider currently meets the six-month persistence rule."
     ))
   }
-  low <- utils::head(z[order(six_month_gap_to_trajectory_pp)], top_n)
-  high <- utils::head(z[order(-six_month_gap_to_trajectory_pp)], top_n)
+  low <- utils::head(z[order(latest_gap_to_trajectory_pp)], top_n)
+  high <- utils::head(z[order(-latest_gap_to_trajectory_pp)], top_n)
   z <- unique(data.table::rbindlist(list(low, high)), by = "analysis_trust_id")
   z[, provider_label := paste0(analysis_trust_name, " (", analysis_trust_id, ")")]
   z[, provider_label := factor(
     provider_label,
-    levels = provider_label[order(six_month_gap_to_trajectory_pp)]
+    levels = provider_label[order(latest_gap_to_trajectory_pp)]
   )]
   z[, signal_label := data.table::fcase(
     signal == "sustained_above_trajectory", "Above own trajectory",
@@ -107,7 +107,7 @@ plot_provider_sustained_deviations <- function(watchlist, config) {
   ggplot2::ggplot(
     z,
     ggplot2::aes(
-      x = six_month_gap_to_trajectory_pp,
+      x = latest_gap_to_trajectory_pp,
       y = provider_label,
       fill = signal_label
     )
@@ -120,8 +120,8 @@ plot_provider_sustained_deviations <- function(watchlist, config) {
     )) +
     ggplot2::labs(
       title = "Providers with a sustained six-month departure from trajectory",
-      subtitle = "Average actual minus one-month-ahead expected performance; at least five of six months must point the same way",
-      x = "Six-month mean gap (percentage points)",
+      subtitle = "Latest actual minus the fixed forecast for the same month; at least five of six months must point the same way",
+      x = "Latest-month gap from fixed forecast (percentage points)",
       y = NULL,
       fill = NULL
     ) +
@@ -140,7 +140,7 @@ plot_provider_flagged_trajectories <- function(deviations, watchlist, config) {
       "No provider currently meets the six-month persistence rule."
     ))
   }
-  selected[, gap_abs___ := abs(six_month_gap_to_trajectory_pp)]
+  selected[, gap_abs___ := abs(latest_gap_to_trajectory_pp)]
   data.table::setorder(selected, -gap_abs___)
   selected <- utils::head(selected, max_providers)
   z <- deviations[analysis_trust_id %in% selected$analysis_trust_id]
@@ -156,7 +156,7 @@ plot_provider_flagged_trajectories <- function(deviations, watchlist, config) {
   )
   long[, series := data.table::fcase(
     series == "actual_performance", "Actual",
-    default = "Expected from prior month"
+    default = "Fixed forecast"
   )]
   ggplot2::ggplot(
     long,
@@ -167,12 +167,12 @@ plot_provider_flagged_trajectories <- function(deviations, watchlist, config) {
     ggplot2::facet_wrap(~ provider_label, ncol = 3) +
     ggplot2::scale_colour_manual(values = c(
       "Actual" = "#333333",
-      "Expected from prior month" = "#702082"
+      "Fixed forecast" = "#702082"
     )) +
     ggplot2::scale_y_continuous(labels = function(x) paste0(round(100 * x), "%")) +
     ggplot2::labs(
       title = "Actual and expected performance for flagged providers",
-      subtitle = "A persistent vertical separation is the signal; isolated gaps are not enough",
+      subtitle = "Endpoint separation is the latest-month gap; the preceding months check persistence",
       x = NULL,
       y = "all-types attendances within four hours",
       colour = NULL

@@ -98,7 +98,7 @@ performance_ae4h_row <- function(
     "actual_performance", "forecast_status"
   ))
   assert_columns(watchlist, c(
-    "data_through_month", "six_month_gap_to_trajectory_pp", "signal"
+    "data_through_month", "latest_gap_to_trajectory_pp", "signal"
   ))
 
   latest_month <- data.table::as.IDate(next_release$data_through_month[1L])
@@ -133,7 +133,7 @@ performance_ae4h_row <- function(
   favourable_target_gap <- if (higher_is_better) target_gap else -target_gap
 
   current_watchlist <- watchlist[data_through_month == latest_month]
-  providers_assessed <- sum(!is.na(current_watchlist$six_month_gap_to_trajectory_pp))
+  providers_assessed <- sum(!is.na(current_watchlist$latest_gap_to_trajectory_pp))
   above_n <- sum(
     current_watchlist$signal == "sustained_above_trajectory", na.rm = TRUE
   )
@@ -405,6 +405,52 @@ performance_outturn_note <- function(row) {
   )
 }
 
+performance_actual_movement <- function(row) {
+  if (is.na(row$actual_value) || is.na(row$latest_value)) {
+    return(list(direction = "not_available", label = "Not available", difference = NA_real_))
+  }
+  difference <- row$actual_value - row$latest_value
+  favourable <- if (isTRUE(row$higher_is_better)) difference else -difference
+  threshold <- row$flat_threshold_native
+  direction <- if (abs(favourable) < threshold) {
+    "stable"
+  } else if (favourable > 0) {
+    "improved"
+  } else {
+    "worsened"
+  }
+  label <- if (direction == "stable") {
+    "Broadly unchanged"
+  } else {
+    paste0(
+      if (direction == "improved") "Improved " else "Worsened ",
+      performance_format_difference(abs(difference), row$unit, row$digits)
+    )
+  }
+  list(direction = direction, label = label, difference = difference)
+}
+
+performance_outturn_summary_html <- function(rows, edition) {
+  if (!identical(edition, "outturn") || !nrow(rows)) return("")
+  movements <- lapply(seq_len(nrow(rows)), function(i) {
+    performance_actual_movement(rows[i])$direction
+  })
+  favourable_error <- data.table::fifelse(
+    rows$higher_is_better, rows$actual_error_native, -rows$actual_error_native
+  )
+  inside <- rows$actual_value >= rows$lower_80 & rows$actual_value <= rows$upper_80
+  paste0(
+    '<section class="result-summary" aria-label="Outturn at a glance">',
+    '<div><strong>', sum(unlist(movements) == "improved"), '</strong><span>improved</span>',
+    '<em>', sum(unlist(movements) == "worsened"), ' worsened</em></div>',
+    '<div><strong>', sum(favourable_error > 0, na.rm = TRUE), '</strong><span>beat forecast</span>',
+    '<em>', sum(favourable_error < 0, na.rm = TRUE), ' missed</em></div>',
+    '<div><strong>', sum(inside, na.rm = TRUE), '</strong><span>inside range</span>',
+    '<em class="range-alert">', sum(!inside, na.rm = TRUE), ' outside</em></div>',
+    '</section>'
+  )
+}
+
 performance_outlook_table_rows <- function(rows) {
   data.table::setorder(rows, display_order)
   pieces <- character()
@@ -414,7 +460,7 @@ performance_outlook_table_rows <- function(rows) {
     group <- if ("overview_group" %in% names(row)) row$overview_group[1L] else ""
     if (!is.na(group) && nzchar(group) && group != previous_group) {
       pieces <- c(pieces, paste0(
-        '<tr class="group-row"><th colspan="5">',
+        '<tr class="group-row"><th colspan="4">',
         performance_html_escape(group), '</th></tr>'
       ))
       previous_group <- group
@@ -430,28 +476,33 @@ performance_outlook_table_rows <- function(rows) {
       "benchmark_label" %in% names(row) && !is.na(row$benchmark_label) &&
         nzchar(row$benchmark_label)
     ) row$benchmark_label else row$target_label
-    provider_note <- if (row$providers_assessed > 0L) paste0(
-      row$providers_favourable, " favourable · ", row$providers_adverse,
-      " adverse provider signals"
-    ) else "Provider trajectory watch not available"
-    metric_label <- if (
-      "edition" %in% names(row) && row$edition[1L] == "outturn"
-    ) paste0(
-      '<span class="metric-name">',
-      performance_html_escape(row$display_name), '</span>'
-    ) else paste0(
+    metric_label <- paste0(
       '<a class="metric-name" href="',
       performance_html_escape(row$deep_dive_file), '">',
       performance_html_escape(row$display_name), '</a>'
     )
-    actual_cell <- if (!is.na(row$actual_value)) paste0(
+    actual_cell <- if (!is.na(row$actual_value)) {
+      actual_movement <- performance_actual_movement(row)
+      favourable_error <- if (isTRUE(row$higher_is_better)) {
+        row$actual_error_native
+      } else {
+        -row$actual_error_native
+      }
+      inside <- row$actual_value >= row$lower_80 && row$actual_value <= row$upper_80
+      paste0(
       '<span class="cell-value actual-value">',
       performance_format_value(row$actual_value, row$unit, row$digits),
       '</span><span class="cell-date">',
       performance_format_short_month(row$actual_month),
-      '</span><span class="cell-note">',
-      performance_html_escape(performance_outturn_note(row)), '</span>'
-    ) else paste0(
+      '</span><span class="result-line ', actual_movement$direction, '">',
+      performance_html_escape(actual_movement$label), '</span>',
+      '<span class="result-line ', if (favourable_error >= 0) "improved" else "worsened", '">',
+      performance_format_difference(abs(row$actual_error_native), row$unit, row$digits),
+      if (favourable_error >= 0) ' better than forecast' else ' worse than forecast',
+      '</span><span class="range-chip ', if (inside) "inside" else "outside", '">',
+      if (inside) 'Inside expected range' else 'Outside expected range', '</span>'
+      )
+    } else paste0(
       '<span class="cell-value pending">—</span>',
       '<span class="cell-date">Not yet released</span>',
       '<span class="cell-note">Added in the outturn edition</span>'
@@ -460,23 +511,21 @@ performance_outlook_table_rows <- function(rows) {
       '<tr class="metric-row">',
       '<th scope="row">', metric_label,
       '<span class="metric-benchmark">', performance_html_escape(benchmark),
-      '</span><span class="metric-signal">',
-      performance_html_escape(provider_note), '</span></th>',
+      '</span></th>',
       '<td><span class="cell-value">',
       performance_format_value(row$latest_value, row$unit, row$digits),
       '</span><span class="cell-date">',
       performance_format_short_month(row$latest_month),
-      '</span><span class="cell-note">Baseline when outlook was made</span></td>',
+      '</span><span class="cell-note">Known when forecast was made</span></td>',
       '<td class="forecast-cell"><span class="cell-value">',
       performance_format_value(row$forecast_value, row$unit, row$digits),
       '</span><span class="cell-date">',
-      performance_format_short_month(row$forecast_month), ' · ', movement,
+      performance_format_short_month(row$forecast_month),
+      if ("edition" %in% names(row) && row$edition[1L] == "forecast") paste0(' · ', movement) else '',
       '</span><span class="cell-note">80% range ',
       performance_format_value(row$lower_80, row$unit, row$digits), "–",
       performance_format_value(row$upper_80, row$unit, row$digits),
-      '</span></td><td>', actual_cell, '</td>',
-      '<td class="detail-cell"><a href="',
-      performance_html_escape(row$deep_dive_file), '">View →</a></td></tr>'
+      '</span></td><td>', actual_cell, '</td></tr>'
     ))
   }
   paste(pieces, collapse = "")
@@ -500,11 +549,21 @@ performance_outlook_commentary <- function(rows, edition = "forecast") {
       rows$actual_error_native,
       -rows$actual_error_native
     )
+    movement_direction <- vapply(seq_len(nrow(rows)), function(i) {
+      performance_actual_movement(rows[i])$direction
+    }, character(1))
+    adverse_order <- order(favourable_error, na.last = NA)
+    notable <- utils::head(rows$short_name[adverse_order], 2L)
+    notable_sentence <- if (length(notable)) paste0(
+      " The weakest results against forecast were ",
+      paste(notable, collapse = " and "), "."
+    ) else ""
     return(paste0(
-      n_metrics, " newly published results can be compared with genuine ",
-      "pre-release forecasts. ", inside, " fell inside their 80% expected range; ",
-      sum(favourable_error > 0, na.rm = TRUE), " were better than forecast and ",
-      sum(favourable_error < 0, na.rm = TRUE), " were worse."
+      sum(movement_direction == "improved"), " of ", n_metrics,
+      " indicators improved on their previous result; ",
+      sum(movement_direction == "worsened"), " worsened. ",
+      sum(favourable_error > 0, na.rm = TRUE), " performed better than forecast, ",
+      "and ", inside, " remained inside their expected range.", notable_sentence
     ))
   }
   if (n_metrics == 1L) {
@@ -621,11 +680,12 @@ build_performance_outlook_page <- function(rows, template_path, output_path,
     } else {
       "What was published, compared with the pre-release outlook"
     },
-    BASELINE_HEADING = if (edition == "forecast") "Latest" else "Previous",
+    BASELINE_HEADING = if (edition == "forecast") "Latest" else "At forecast",
     ISSUE_DATE = issue_date,
     N_METRICS = as.character(nrow(rows)),
     COVERAGE_NOTE = coverage_note,
     SUMMARY_COMMENTARY = performance_html_escape(summary),
+    RESULT_SUMMARY = performance_outturn_summary_html(rows, edition),
     METRIC_ROWS = performance_outlook_table_rows(data.table::copy(rows)),
     SOURCES = sources_html,
     GENERATED_AT = format(Sys.time(), "%d %B %Y, %H:%M %Z")

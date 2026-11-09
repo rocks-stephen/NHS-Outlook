@@ -365,18 +365,56 @@ for (metric in metrics) {
       file.path(directory, "provider_fixed_six_month_path.csv"),
       encoding = "UTF-8"
     )
+    fixed_latest <- fixed_path[
+      forecast_evidence != "observed_forecast_origin"
+    ][order(target_month), .SD[.N], by = entity_id][, .(
+      entity_id, path_latest_error = actual_value - predicted_value,
+      path_latest_expected = predicted_value
+    )]
+    gap_check <- merge(
+      watchlist[signal_eligibility_reason == "eligible"], fixed_latest,
+      by = "entity_id", all.x = TRUE
+    )
+    add_check(
+      metric, "provider_gap_matches_fixed_path_endpoint",
+      !nrow(gap_check) || all(
+        is.finite(gap_check$path_latest_error) &
+          abs(gap_check$latest_error_native - gap_check$path_latest_error) < 1e-8 &
+          abs(gap_check$latest_expected_value - gap_check$path_latest_expected) < 1e-8 &
+          abs(gap_check$favourable_gap_native -
+            if (isTRUE(parse_logical_strict(metric_config[metric_id == metric, higher_is_better])[1L])) gap_check$path_latest_error else
+              -gap_check$path_latest_error) < 1e-8 &
+          gap_check$trajectory_gap_basis == "latest_month_fixed_path"
+      ),
+      paste(nrow(gap_check), "eligible provider endpoint gaps")
+    )
     signal_window <- as.integer(config_row$signal_window_months[1L])
     fixed_counts <- fixed_path[, .(
-      months_n = .N,
+      rows_n = .N,
+      forecast_months_n = sum(
+        forecast_evidence == "historically_simulated_fixed_six_month_path"
+      ),
+      origin_rows_n = sum(forecast_evidence == "observed_forecast_origin"),
+      origin_is_zero_gap = all(
+        error_native[forecast_evidence == "observed_forecast_origin"] == 0 &
+          predicted_value[forecast_evidence == "observed_forecast_origin"] ==
+            actual_value[forecast_evidence == "observed_forecast_origin"]
+      ),
       origins_n = data.table::uniqueN(origin_month),
       evidence_ok = all(
-        forecast_evidence == "historically_simulated_fixed_six_month_path"
+        forecast_evidence %in% c(
+          "observed_forecast_origin",
+          "historically_simulated_fixed_six_month_path"
+        )
       )
     ), by = entity_id]
     add_check(
       metric, "provider_watch_uses_fixed_six_month_path",
       nrow(fixed_counts) > 0L &&
-        all(fixed_counts$months_n == signal_window) &&
+        all(fixed_counts$rows_n == signal_window + 1L) &&
+        all(fixed_counts$forecast_months_n == signal_window) &&
+        all(fixed_counts$origin_rows_n == 1L) &&
+        all(fixed_counts$origin_is_zero_gap) &&
         all(fixed_counts$origins_n == 1L) &&
         all(fixed_counts$evidence_ok) &&
         all(watchlist[

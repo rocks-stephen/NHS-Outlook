@@ -313,8 +313,8 @@ for (metric_index in seq_len(nrow(core_metrics))) {
     watchlist <- core_provider_watchlist(signals, provider, provider_next)
     provider_status_reason <- paste0(
       "Actual performance is compared with the monthly path forecast six ",
-      "months earlier. The displayed figure is the average gap across those ",
-      "six months."
+      "months earlier. The displayed figure is the latest actual minus the ",
+      "fixed forecast for that same month; the six-month window checks persistence."
     )
   }
 

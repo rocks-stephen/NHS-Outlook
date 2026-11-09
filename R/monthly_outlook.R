@@ -171,6 +171,7 @@ outlook_narrative <- function(
   }
   if (!is.na(actual)) {
     error <- 100 * (actual - point)
+    movement <- 100 * (actual - latest)
     direction <- if (error >= 0) "above" else "below"
     interval_text <- if (
       !is.na(forecast_row$lower_80[1L]) &&
@@ -183,6 +184,15 @@ outlook_narrative <- function(
     }
     return(paste0(
       "The published result was ", outlook_format_percent(actual), ", ",
+      if (abs(movement) < 0.05) {
+        "broadly unchanged from the previous month and "
+      } else {
+        paste0(
+          outlook_format_pp(abs(movement)), " ",
+          if (movement > 0) "better" else "worse",
+          " than the previous month and "
+        )
+      },
       outlook_format_pp(abs(error)), " ", direction,
       " forecast and ", interval_text, ".", target_sentence
     ))
@@ -281,8 +291,24 @@ outlook_provider_commentary <- function(provider_assessed, above_n, below_n, wit
   )
 }
 
+outlook_provider_signal_severity <- function(signal, gap_pp, materiality_pp) {
+  threshold <- as.numeric(materiality_pp)[1L]
+  if (!is.finite(threshold) || threshold <= 0) {
+    stop("Provider signal materiality threshold must be positive.")
+  }
+  ratio <- abs(gap_pp) / threshold
+  data.table::fcase(
+    signal == "sustained_above_trajectory" & ratio >= 2, "marked-favourable",
+    signal == "sustained_above_trajectory", "moderate-favourable",
+    signal == "sustained_below_trajectory" & ratio >= 2, "marked-adverse",
+    signal == "sustained_below_trajectory", "moderate-adverse",
+    default = "neutral"
+  )
+}
+
 outlook_provider_distribution_svg <- function(provider_signals,
-                                               benchmark = 0.95) {
+                                               benchmark = 0.95,
+                                               materiality_pp = 2) {
   z <- data.table::copy(provider_signals[
     is.finite(latest_actual_performance)
   ])
@@ -302,18 +328,31 @@ outlook_provider_distribution_svg <- function(provider_signals,
     left + (value - x_min) * (right - left) / max(1e-9, x_max - x_min)
   }
   z[, y___ := 51 + (seq_len(.N) %% 9L) * 7]
-  z[, class___ := data.table::fcase(
-    signal == "sustained_above_trajectory", "favourable",
-    signal == "sustained_below_trajectory", "adverse",
-    default = "neutral"
+  z[, class___ := outlook_provider_signal_severity(
+    signal, latest_gap_to_trajectory_pp, materiality_pp
   )]
+  gap_description <- function(gap) {
+    if (!is.finite(gap)) return("latest-month fixed-path comparison unavailable")
+    paste0(
+      "latest-month gap ", outlook_format_pp(abs(gap)),
+      if (gap >= 0) " better" else " worse",
+      " than fixed forecast for the same month"
+    )
+  }
   dots <- paste(vapply(seq_len(nrow(z)), function(i) paste0(
     '<circle class="distribution-dot ', z$class___[i], '" cx="',
     sprintf("%.1f", x_position(z$latest_actual_performance[i])), '" cy="',
-    z$y___[i], '" r="4"><title>',
+    z$y___[i], '" r="4" tabindex="0" role="button" data-provider-id="',
+    outlook_html_escape(z$analysis_trust_id[i]), '" aria-label="',
     outlook_html_escape(z$analysis_trust_name[i]), ': ',
     outlook_format_percent(z$latest_actual_performance[i]),
-    '</title></circle>'
+    '. ', gsub("-", " ", z$class___[i], fixed = TRUE), '; ',
+    gap_description(z$latest_gap_to_trajectory_pp[i]),
+    '. Show trajectory"><title>',
+    outlook_html_escape(z$analysis_trust_name[i]), ': ',
+    outlook_format_percent(z$latest_actual_performance[i]), ' · ',
+    gsub("-", " ", z$class___[i], fixed = TRUE), ' · ',
+    gap_description(z$latest_gap_to_trajectory_pp[i]), '</title></circle>'
   ), character(1)), collapse = "")
   benchmark_x <- x_position(benchmark)
   benchmark_anchor <- if (benchmark_x >= right - 130) {
@@ -358,9 +397,55 @@ outlook_provider_distribution_svg <- function(provider_signals,
     benchmark_line,
     '<line class="distribution-axis" x1="', left, '" x2="', right,
     '" y1="', bottom, '" y2="', bottom, '"></line>',
-    dots, tick_html, '</svg>'
+    dots, tick_html, '</svg>',
+    '<div class="distribution-legend" aria-label="Trajectory-watch severity legend">',
+    '<span><i class="marked-adverse"></i>Marked deterioration</span>',
+    '<span><i class="moderate-adverse"></i>Moderate deterioration</span>',
+    '<span><i class="neutral"></i>No sustained signal</span>',
+    '<span><i class="moderate-favourable"></i>Moderate improvement</span>',
+    '<span><i class="marked-favourable"></i>Marked improvement</span>',
+    '<em>Moderate = 1–&lt;2×; marked = at least 2× the A&amp;E materiality threshold.</em></div>'
   )
 }
+
+outlook_provider_explorer_html <- function(provider_path) {
+  required <- c("analysis_trust_id", "analysis_trust_name", "target_month",
+                "predicted_performance", "actual_performance")
+  if (!nrow(provider_path) || !all(required %in% names(provider_path))) return("")
+  z <- data.table::copy(provider_path[
+    is.finite(predicted_performance) & is.finite(actual_performance)
+  ])
+  if (!nrow(z)) return("")
+  data.table::setorder(z, analysis_trust_name, target_month)
+  valid_ids <- z[, .N, by = analysis_trust_id][N >= 2L, analysis_trust_id]
+  z <- z[analysis_trust_id %in% valid_ids]
+  groups <- split(z, z$analysis_trust_id)
+  options <- vapply(groups, function(g) paste0(
+    '<option value="', outlook_html_escape(g$analysis_trust_id[1L]),
+    '" data-name="', outlook_html_escape(g$analysis_trust_name[1L]),
+    '" data-months="', paste(format(as.Date(g$target_month), "%b %Y"), collapse = "|"),
+    '" data-forecast="', paste(g$predicted_performance, collapse = "|"),
+    '" data-actual="', paste(g$actual_performance, collapse = "|"), '">',
+    outlook_html_escape(g$analysis_trust_name[1L]), '</option>'
+  ), character(1))
+  paste0(
+    '<section class="provider-explorer" data-provider-explorer data-unit="proportion" data-digits="1">',
+    '<div class="explorer-head"><div><strong>Explore a provider trajectory</strong>',
+    '<span>Select a trust, or click a dot above. Hover or focus on a dot to identify it.</span></div>',
+    '<label>Trust<select data-provider-select>', paste(options, collapse = ""),
+    '</select></label></div><div class="explorer-summary" data-provider-summary></div>',
+    '<svg class="explorer-chart" data-provider-chart viewBox="0 0 770 180" role="img" ',
+    'aria-label="Selected provider actual and fixed forecast trajectory"></svg></section>'
+  )
+}
+
+outlook_provider_explorer_script <- function() paste0(
+  "document.querySelectorAll('[data-provider-explorer]').forEach(function(root){",
+  "var select=root.querySelector('[data-provider-select]'),svg=root.querySelector('[data-provider-chart]'),summary=root.querySelector('[data-provider-summary]'),ns='http://www.w3.org/2000/svg';if(!select||!svg)return;",
+  "function add(tag,attrs,text){var el=document.createElementNS(ns,tag);Object.keys(attrs||{}).forEach(function(k){el.setAttribute(k,attrs[k]);});if(text!==undefined)el.textContent=text;svg.appendChild(el);return el;}function fmt(v){var d=Number(root.dataset.digits||1);return root.dataset.unit==='proportion'?(v*100).toFixed(d)+'%':v.toFixed(d);}",
+  "function draw(){var o=select.options[select.selectedIndex],f=o.dataset.forecast.split('|').map(Number),a=o.dataset.actual.split('|').map(Number),m=o.dataset.months.split('|'),all=f.concat(a),lo=Math.min.apply(null,all),hi=Math.max.apply(null,all),pad=Math.max((hi-lo)*.15,root.dataset.unit==='proportion'?.005:.25);lo-=pad;hi+=pad;var x=function(i){return 58+i*664/Math.max(1,a.length-1);},y=function(v){return 142-(v-lo)*112/Math.max(1e-9,hi-lo);},pts=function(v){return v.map(function(n,i){return x(i).toFixed(1)+','+y(n).toFixed(1);}).join(' ');};svg.replaceChildren();[0,.5,1].forEach(function(q){var yy=142-q*112,val=lo+q*(hi-lo);add('line',{x1:58,x2:722,y1:yy,y2:yy,class:'explorer-grid'});add('text',{x:50,y:yy+4,'text-anchor':'end',class:'explorer-axis'},fmt(val));});add('polyline',{points:pts(f),class:'explorer-forecast'});add('polyline',{points:pts(a),class:'explorer-actual'});add('circle',{cx:x(f.length-1),cy:y(f[f.length-1]),r:4,class:'explorer-dot-forecast'});add('circle',{cx:x(a.length-1),cy:y(a[a.length-1]),r:4,class:'explorer-dot-actual'});add('text',{x:58,y:164,'text-anchor':'start',class:'explorer-axis'},m[0]);add('text',{x:722,y:164,'text-anchor':'end',class:'explorer-axis'},m[m.length-1]);var gap=a[a.length-1]-f[f.length-1];summary.textContent=o.dataset.name+' — actual '+fmt(a[a.length-1])+', fixed forecast '+fmt(f[f.length-1])+' ('+(gap>=0?'+':'')+(root.dataset.unit==='proportion'?(gap*100).toFixed(Number(root.dataset.digits||1))+'pp':fmt(gap))+', latest month)';document.querySelectorAll('.distribution-dot').forEach(function(d){d.classList.toggle('selected',d.dataset.providerId===o.value);});}",
+  "select.addEventListener('change',draw);document.querySelectorAll('.distribution-dot[data-provider-id]').forEach(function(dot){function choose(){var opt=Array.from(select.options).find(function(o){return o.value===dot.dataset.providerId;});if(opt){select.value=opt.value;draw();root.scrollIntoView({behavior:'smooth',block:'nearest'});}}dot.addEventListener('click',choose);dot.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();choose();}});});draw();});"
+)
 
 outlook_chart_svg <- function(national, forecast_row, months_shown = 13L) {
   target_month <- data.table::as.IDate(forecast_row$forecast_month[1L])
@@ -587,16 +672,43 @@ outlook_medium_term_svg <- function(
   )
 }
 
-outlook_provider_rows <- function(signals, direction, n = 3L) {
+outlook_provider_spark_svg <- function(path, provider_id) {
+  if (!nrow(path)) return("")
+  provider_id_value <- provider_id
+  z <- data.table::copy(path[analysis_trust_id == provider_id_value])
+  if (!nrow(z)) return("")
+  data.table::setorder(z, target_month)
+  z <- z[is.finite(predicted_performance) & is.finite(actual_performance)]
+  if (nrow(z) < 2L) return("")
+  values <- c(z$predicted_performance, z$actual_performance)
+  padding <- max(diff(range(values)) * 0.12, 0.005)
+  y_min <- min(values) - padding; y_max <- max(values) + padding
+  x <- seq(6, 104, length.out = nrow(z))
+  y <- function(value) 40 - (value - y_min) * 34 / max(1e-9, y_max - y_min)
+  points <- function(value) paste(
+    paste0(sprintf("%.1f", x), ",", sprintf("%.1f", y(value))), collapse = " "
+  )
+  paste0(
+    '<svg class="provider-spark" viewBox="0 0 110 48" role="img" aria-label="Six-month actual and fixed forecast path">',
+    '<polyline class="spark-forecast" points="', points(z$predicted_performance), '"></polyline>',
+    '<polyline class="spark-actual" points="', points(z$actual_performance), '"></polyline>',
+    '<circle class="spark-forecast-dot" cx="104" cy="', sprintf("%.1f", y(utils::tail(z$predicted_performance, 1L))), '" r="2.4"></circle>',
+    '<circle class="spark-actual-dot" cx="104" cy="', sprintf("%.1f", y(utils::tail(z$actual_performance, 1L))), '" r="2.4"></circle>',
+    '</svg><div class="spark-key"><span class="actual-key">Actual</span><span class="forecast-key">Fixed forecast</span></div>'
+  )
+}
+
+outlook_provider_rows <- function(signals, direction,
+                                  provider_path = data.table::data.table(), n = 3L) {
   signal_value <- paste0("sustained_", direction, "_trajectory")
   z <- data.table::copy(signals[signal == signal_value])
   if (!nrow(z)) {
     return('<div class="empty-signal">No providers currently meet this sustained-deviation rule.</div>')
   }
   if (direction == "above") {
-    data.table::setorder(z, -six_month_gap_to_trajectory_pp)
+    data.table::setorder(z, -latest_gap_to_trajectory_pp)
   } else {
-    data.table::setorder(z, six_month_gap_to_trajectory_pp)
+    data.table::setorder(z, latest_gap_to_trajectory_pp)
   }
   z <- utils::head(z, n)
   paste(vapply(seq_len(nrow(z)), function(i) {
@@ -606,20 +718,7 @@ outlook_provider_rows <- function(signals, direction, n = 3L) {
       z$signal_status[i] == "new_signal", "New",
       default = "Active"
     )
-    evidence <- data.table::fcase(
-      z$signal_evidence[i] == "fixed_six_month_path_backtest",
-        "path fixed six months earlier",
-      z$signal_evidence[i] == "genuine_release_vintages",
-        "6 archived release forecasts",
-      z$signal_evidence[i] == "mixed_genuine_and_simulated",
-        paste0(z$genuine_release_vintages_6m[i], " archived + historical backtest"),
-      default = "historical backtest"
-    )
-    unusual <- if (isTRUE(z$statistically_unusual_6m[i])) {
-      '<span class="unusual">Historically unusual</span>'
-    } else {
-      ""
-    }
+    evidence <- "Forecast fixed before the six-month window"
     paste0(
       '<div class="provider-row">',
       '<div><div class="provider-name">',
@@ -627,10 +726,14 @@ outlook_provider_rows <- function(signals, direction, n = 3L) {
       '</div><div class="provider-context">Latest ',
       outlook_format_percent(z$latest_actual_performance[i]), ' · ',
       consistency, ' of 6 months in this direction · ', status,
-      '</div><div class="provider-evidence">', evidence, '</div>', unusual, '</div>',
-      '<div class="provider-gap ', direction, '"><strong>',
-      outlook_format_pp(z$six_month_gap_to_trajectory_pp[i], signed = TRUE),
-      '</strong><span>six-month gap</span></div>',
+      '</div><div class="provider-evidence">', evidence, '</div></div>',
+      '<div class="provider-spark-wrap">',
+      outlook_provider_spark_svg(provider_path, z$analysis_trust_id[i]),
+      '</div><div class="provider-gap ', direction, '"><strong>',
+      outlook_format_pp(z$latest_gap_to_trajectory_pp[i], signed = TRUE),
+      '</strong><span>',
+      if (direction == "above") "latest month: above forecast" else "latest month: below forecast",
+      '</span></div>',
       '</div>'
     )
   }, character(1)), collapse = "")
@@ -658,7 +761,9 @@ build_ae_outlook_page <- function(
     intermediate_target_performance = 0.82,
     final_target_start_month = data.table::as.IDate("2028-04-01"),
     forecast_method = data.table::data.table(),
-    forecast_components = data.table::data.table()) {
+    forecast_components = data.table::data.table(),
+    diagnostic_html = "", diagnostic_compact_html = "",
+    provider_path = data.table::data.table()) {
   required_forecast <- c(
     "forecast_month", "predicted_performance", "lower_80", "upper_80",
     "actual_performance", "data_through_month", "latest_actual_performance"
@@ -666,7 +771,7 @@ build_ae_outlook_page <- function(
   assert_columns(forecast_row, required_forecast)
   required_provider <- c(
     "data_through_month", "analysis_trust_name", "latest_actual_performance",
-    "six_month_gap_to_trajectory_pp", "six_month_direction_share",
+    "latest_gap_to_trajectory_pp", "six_month_direction_share",
     "statistically_unusual_6m", "signal", "signal_status", "signal_evidence",
     "genuine_release_vintages_6m"
   )
@@ -679,7 +784,7 @@ build_ae_outlook_page <- function(
     nhs_outlook_publication_status()
   )
   state_class <- if (is.na(actual)) "forecast-state" else "released-state"
-  provider_assessed <- sum(!is.na(provider_signals$six_month_gap_to_trajectory_pp))
+  provider_assessed <- sum(!is.na(provider_signals$latest_gap_to_trajectory_pp))
   above_n <- sum(provider_signals$signal == "sustained_above_trajectory", na.rm = TRUE)
   below_n <- sum(provider_signals$signal == "sustained_below_trajectory", na.rm = TRUE)
   within_n <- provider_assessed - above_n - below_n
@@ -748,6 +853,20 @@ build_ae_outlook_page <- function(
     },
     STATE_LABEL = state,
     STATE_CLASS = state_class,
+    EDITION_SUBTITLE = if (is.na(actual)) {
+      paste0(
+        "Forecast for ", outlook_format_month(target_month), " · data through ",
+        outlook_format_month(forecast_row$data_through_month[1L]),
+        " · issued ", issued_at
+      )
+    } else {
+      paste0(
+        "Outturn for ", outlook_format_month(target_month),
+        " · forecast issued with data through ",
+        outlook_format_month(forecast_row$data_through_month[1L])
+      )
+    },
+    BASELINE_LABEL = if (is.na(actual)) "Latest" else "At forecast",
     DATA_THROUGH_MONTH = outlook_format_month(forecast_row$data_through_month[1L]),
     FORECAST_ISSUED_DATE = issued_at,
     NATIONAL_FORECAST = outlook_format_percent(forecast_row$predicted_performance[1L]),
@@ -762,13 +881,22 @@ build_ae_outlook_page <- function(
       forecast_row$latest_actual_performance[1L]
     ),
     ACTUAL_VALUE = actual_value,
-    FORECAST_ERROR = forecast_error,
+    FORECAST_ERROR = if (is.na(actual)) forecast_error else paste0(
+      outlook_format_pp(abs(100 * (actual - forecast_row$latest_actual_performance[1L]))),
+      if (actual >= forecast_row$latest_actual_performance[1L]) {
+        " better than previous · "
+      } else {
+        " worse than previous · "
+      },
+      forecast_error
+    ),
     STANDARD_GAP = standard_text,
     NATIONAL_NARRATIVE = outlook_narrative(
       national, medium_forecast, forecast_row,
       intermediate_target_month, intermediate_target_performance,
       forecast_components
     ),
+    WHAT_CHANGED_CONTENT = diagnostic_compact_html,
     NATIONAL_CHART = outlook_chart_svg(national, forecast_row),
     MEDIUM_TERM_CHART = outlook_medium_term_svg(
       national, medium_forecast,
@@ -789,24 +917,28 @@ build_ae_outlook_page <- function(
       provider_assessed, above_n, below_n, within_n
     ),
     PROVIDER_DISTRIBUTION = outlook_provider_distribution_svg(
-      provider_signals, 0.95
+      provider_signals, 0.95, provider_materiality_pp
     ),
+    PROVIDER_EXPLORER = outlook_provider_explorer_html(provider_path),
+    PROVIDER_EXPLORER_SCRIPT = outlook_provider_explorer_script(),
     SIGNAL_EVIDENCE_NOTE = if (
       provider_assessed > 0L && all(
-        provider_signals[!is.na(six_month_gap_to_trajectory_pp), signal_evidence] ==
+        provider_signals[!is.na(latest_gap_to_trajectory_pp), signal_evidence] ==
           "genuine_release_vintages"
       )
     ) {
-      "All six-month signals use forecasts archived before each monthly release."
+      "Six actual months are compared with one forecast path fixed before the window. Both lines begin at the same observed value. The displayed gap is the latest actual minus the fixed forecast for that same month."
     } else {
-      "Signals compare the latest six actual months with a forecast path fixed before that six-month window."
+      "Six actual months are compared with one forecast path fixed before the window. Both lines begin at the same observed value. The displayed gap is the latest actual minus the fixed forecast for that same month."
     },
     PROVIDER_WINDOW_MONTHS = as.character(provider_window_months),
     PROVIDER_MATERIALITY_PP = outlook_format_pp(provider_materiality_pp),
     PROVIDER_DIRECTION_MONTHS = as.character(direction_months_required),
-    ABOVE_ROWS = outlook_provider_rows(provider_signals, "above"),
-    BELOW_ROWS = outlook_provider_rows(provider_signals, "below"),
+    ABOVE_ROWS = outlook_provider_rows(provider_signals, "above", provider_path),
+    BELOW_ROWS = outlook_provider_rows(provider_signals, "below", provider_path),
     METHOD_TEXT = outlook_html_escape(method_text),
+    DIAGNOSTIC_PAGE_CLASS = if (nzchar(diagnostic_html)) "" else "diagnostic-omitted",
+    DIAGNOSTIC_CONTENT = diagnostic_html,
     GENERATED_AT = format(Sys.time(), "%d %B %Y, %H:%M %Z")
   )
   output <- outlook_fill_template(template, replacements)

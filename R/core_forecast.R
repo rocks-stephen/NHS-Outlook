@@ -1035,7 +1035,19 @@ core_fixed_six_month_path <- function(panel, rolling, metric_row, config_row) {
       error_native = actual_value - predicted_value,
       forecast_evidence = "historically_simulated_fixed_six_month_path"
     )]
-    out
+    origin_actual <- utils::tail(train, 1L)$value
+    origin_row <- data.table::data.table(
+      target_month = origin_month,
+      predicted_value = origin_actual,
+      actual_value = origin_actual,
+      metric_id = metric_row$metric_id[1L],
+      entity_id = entity,
+      entity_name = core_latest_nonmissing_character(train$entity_name),
+      origin_month = origin_month,
+      error_native = 0,
+      forecast_evidence = "observed_forecast_origin"
+    )
+    data.table::rbindlist(list(origin_row, out), use.names = TRUE, fill = TRUE)
   })
   out <- data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
   if (!nrow(out)) return(data.table::data.table())
@@ -1044,6 +1056,13 @@ core_fixed_six_month_path <- function(panel, rolling, metric_row, config_row) {
 }
 
 core_provider_signals <- function(surprises, provider_panel, metric_row, config_row) {
+  if (!nrow(surprises)) surprises <- data.table::data.table(
+    entity_id = character(), entity_name = character(),
+    target_month = data.table::as.IDate(character()),
+    origin_month = data.table::as.IDate(character()),
+    actual_value = numeric(), predicted_value = numeric(), error_native = numeric(),
+    forecast_evidence = character()
+  )
   window <- core_config_integer(config_row, "signal_window_months", 2L)
   threshold <- core_config_number(config_row, "signal_materiality_native", 0)
   direction_share_required <- core_config_number(
@@ -1058,7 +1077,11 @@ core_provider_signals <- function(surprises, provider_panel, metric_row, config_
   rows <- lapply(entities, function(entity) {
     history <- data.table::copy(surprises[entity_id == entity])
     data.table::setorder(history, target_month)
-    history <- utils::tail(history[target_month <= latest_month], window)
+    # The shared observed origin is an anchor, not a forecast error.
+    history <- utils::tail(history[
+      target_month <= latest_month &
+        forecast_evidence != "observed_forecast_origin"
+    ], window)
     provider_window <- data.table::copy(provider_panel[
       entity_id == entity & calendar_month <= latest_month
     ])
@@ -1093,7 +1116,13 @@ core_provider_signals <- function(surprises, provider_panel, metric_row, config_
       (is.finite(minimum_volume) && minimum_volume >= minimum_denominator)
     consecutive <- nrow(history) == window &&
       all(diff(month_id(history$target_month)) == 1L) &&
-      max(history$target_month) == latest_month
+      max(history$target_month) == latest_month &&
+      all(is.finite(history$actual_value)) &&
+      all(is.finite(history$predicted_value)) &&
+      all(is.finite(history$error_native)) &&
+      all(grepl("fixed_six_month_path", history$forecast_evidence, fixed = TRUE)) &&
+      data.table::uniqueN(history$origin_month) == 1L &&
+      all(history$origin_month < min(history$target_month))
     eligibility_reason <- if (!consecutive) {
       "insufficient_consecutive_forecast_surprises"
     } else if (!length(volume) || any(!is.finite(volume))) {
@@ -1113,7 +1142,11 @@ core_provider_signals <- function(surprises, provider_panel, metric_row, config_
         data_through_month = latest_month,
         signal_months_n = nrow(history),
         mean_error_native = NA_real_,
+        mean_favourable_gap_native = NA_real_,
+        latest_error_native = NA_real_,
+        latest_expected_value = NA_real_,
         favourable_gap_native = NA_real_,
+        trajectory_gap_basis = "latest_month_fixed_path",
         direction_share = NA_real_,
         latest_error_same_direction = NA,
         signal = "insufficient_history_or_volume",
@@ -1130,10 +1163,13 @@ core_provider_signals <- function(surprises, provider_panel, metric_row, config_
       -history$error_native
     }
     mean_error <- mean(history$error_native)
-    favourable_gap <- mean(favourable_errors)
+    # This month's actual minus this month's point on the fixed path is the
+    # published gap. The preceding months establish direction, not magnitude.
+    favourable_gap <- utils::tail(favourable_errors, 1L)
+    latest_error <- utils::tail(history$error_native, 1L)
     expected_sign <- sign(favourable_gap)
     direction_share <- mean(sign(favourable_errors) == expected_sign)
-    latest_same <- sign(utils::tail(favourable_errors, 1L)) == expected_sign
+    latest_same <- expected_sign != 0
     signal <- if (
       favourable_gap >= threshold &&
         direction_share >= direction_share_required && latest_same
@@ -1169,7 +1205,11 @@ core_provider_signals <- function(surprises, provider_panel, metric_row, config_
       data_through_month = latest_month,
       signal_months_n = window,
       mean_error_native = mean_error,
+      mean_favourable_gap_native = mean(favourable_errors),
+      latest_error_native = latest_error,
+      latest_expected_value = utils::tail(history$predicted_value, 1L),
       favourable_gap_native = favourable_gap,
+      trajectory_gap_basis = "latest_month_fixed_path",
       direction_share = direction_share,
       latest_error_same_direction = latest_same,
       signal = signal,
@@ -1216,7 +1256,11 @@ core_empty_provider_watchlist <- function() {
     data_through_month = data.table::as.IDate(character()),
     signal_months_n = integer(),
     mean_error_native = numeric(),
+    mean_favourable_gap_native = numeric(),
+    latest_error_native = numeric(),
+    latest_expected_value = numeric(),
     favourable_gap_native = numeric(),
+    trajectory_gap_basis = character(),
     direction_share = numeric(),
     latest_error_same_direction = logical(),
     signal = character(),

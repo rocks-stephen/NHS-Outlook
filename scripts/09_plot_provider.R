@@ -15,10 +15,10 @@ watchlist[, `:=`(
   forecast_month = data.table::as.IDate(forecast_month)
 )]
 deviations <- data.table::fread(
-  "output/provider/deviation_history.csv", encoding = "UTF-8"
+  "output/provider/latest_six_month_fixed_outlook.csv", encoding = "UTF-8"
 )
 deviations[, `:=`(
-  origin_month = data.table::as.IDate(origin_month),
+  fixed_origin_month = data.table::as.IDate(fixed_origin_month),
   target_month = data.table::as.IDate(target_month)
 )]
 comparison <- data.table::fread(
