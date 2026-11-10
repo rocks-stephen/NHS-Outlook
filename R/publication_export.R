@@ -106,7 +106,7 @@ build_substack_draft <- function(rows, manifest, edition, output_path) {
     "",
     "---",
     "",
-    "*ROCKS / HEALTH is independent analysis by Stephen Rocks and is not an NHS publication. Forecasts are descriptive, uncertain and should be read alongside the source and methodology notes in each PDF.*"
+    "*ROCKS / HEALTH is independent analysis by Stephen Rocks. Forecasts are descriptive, uncertain and should be read alongside the source and methodology notes in each PDF.*"
   )
   dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
   writeLines(text, output_path, useBytes = TRUE)
