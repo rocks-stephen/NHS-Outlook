@@ -26,6 +26,7 @@ edition_archive_input_files <- function(project_root = getwd()) {
     "config/performance_metrics.csv",
     "config/national_model.csv",
     "config/provider_model.csv",
+    "config/core_model.csv",
     "config/core_targets.csv",
     "config/editorial_commentary.csv",
     "data-interim/national_month_stage1.csv",

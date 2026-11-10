@@ -8,6 +8,7 @@ pkgs <- c('dplyr','tidyr','purrr','stringr','readr','readxl','janitor','lubridat
 missing_pkgs <- setdiff(pkgs, rownames(installed.packages()))
 if (length(missing_pkgs)) stop('Install these R packages to run the deep dive: ', paste(missing_pkgs, collapse=', '))
 invisible(lapply(pkgs, library, character.only=TRUE))
+source("R/utils.R")  # bounded percentage chart axes
 
 ROOT <- normalizePath('.', winslash='/', mustWork=TRUE)
 DATA_DIR <- getOption('nhs.outlook.deep_dive.data_dir', file.path(ROOT,'data','flow'))
@@ -280,6 +281,16 @@ plot_metric <- function(v,label,name) {
    geom_vline(xintercept=as.Date('2026-03-01'),linetype=2)+
    labs(title=paste('George Eliot:',label),x=NULL,y=label,caption='Dashed line: March 2026. Source: NHS England; see source QA.')+
    theme_minimal(base_size=12)
+ # Shares and proportions cannot fall below zero or exceed 100%.
+ # Bed occupancy is excluded because reporting can exceed nominal capacity.
+ if (grepl('_pct$', v) && v != 'ga_occupancy_pct') {
+   p <- p + scale_y_continuous(
+     limits=nhs_percentage_axis_limits,
+     breaks=nhs_percentage_axis_breaks,
+     oob=scales::oob_keep,
+     expand=expansion(mult=0)
+   )
+ }
  ggsave(file.path(OUT,paste0(name,'.png')),p,width=9,height=4.5,dpi=160)
 }
 plot_metric('ae_all_attendances','All A&E attendances','01_attendances')

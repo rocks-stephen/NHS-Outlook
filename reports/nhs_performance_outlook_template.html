@@ -14,6 +14,26 @@
     footer{display:flex;justify-content:space-between;gap:18px;margin:0 32px;padding:10px 0 18px;border-top:1px solid var(--line);color:var(--muted);font-size:7px}.brand-footer{color:var(--brand);font-weight:800;letter-spacing:.1em}
     @media(max-width:680px){.page{width:100%;min-height:0;margin:0;box-shadow:none}header,main{padding-left:18px;padding-right:18px}.intro{grid-template-columns:1fr;gap:10px}.meta{text-align:left}.result-summary{grid-template-columns:1fr}.result-summary>div{border-right:0;border-bottom:1px solid var(--line)}footer{margin-left:18px;margin-right:18px;flex-direction:column}table{table-layout:auto}col.baseline{display:none}thead th:nth-child(2),tbody td:nth-child(2){display:none}.metric-name{font-size:12px}.cell-value{font-size:18px}.actual-value{font-size:20px}}
     @media print{@page{size:A4 portrait;margin:0}html,body{width:210mm;height:297mm;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{width:210mm;height:297mm;min-height:297mm;margin:0;box-shadow:none;overflow:hidden}header{padding:6mm 9mm 4mm;border-top-width:3mm}.masthead{font-size:6.5pt}h1{margin-top:5mm;font-size:27pt}.subtitle{font-size:8pt}.rule{margin-top:4mm}main{padding:0 9mm 2mm}.intro{grid-template-columns:1fr 38mm;gap:6mm;padding:3.5mm 0}.summary{font-size:10.5pt}.meta{font-size:5.5pt}.meta strong{font-size:7pt}.result-summary{margin-bottom:2.5mm}.result-summary>div{padding:1.6mm 2mm}.result-summary strong{font-size:14pt}.result-summary span{font-size:5.5pt}.result-summary em{font-size:4.5pt}col.metric{width:30%}col.baseline{width:18%}col.forecast{width:20%}col.actual{width:32%}thead th{padding:1.3mm 1.6mm;font-size:5.2pt}tbody th,tbody td{padding:1.5mm 1.6mm}.group-row th{padding:1.1mm 1.6mm .8mm;font-size:5pt}.metric-name{font-size:7pt}.metric-benchmark{margin-top:.5mm;font-size:4.5pt}.cell-value{font-size:11.5pt}.actual-value{font-size:12.5pt}.cell-date{margin-top:.5mm;font-size:4.6pt}.cell-note,.result-line{margin-top:.7mm;font-size:4.2pt}.range-chip{margin-top:.8mm;padding:.3mm 1mm;font-size:3.8pt}.method{gap:5mm;padding-top:2mm;font-size:4.5pt}footer{margin:0 9mm;padding:2mm 0 3mm;font-size:4.2pt}header,.intro,.result-summary,table,.method,footer,tr{break-inside:avoid}}
+
+    /* Target milestone is deliberately separate from the next-release forecast. */
+    .milestone-cell{background:#f8faf9}
+    .milestone-date{font-size:9px;font-weight:800;color:#46545d;margin-bottom:5px}
+    .milestone-pair{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+    .milestone-entry small{display:block;font-size:9px;color:var(--muted);line-height:1.1}
+    .milestone-entry strong{display:block;font-size:17px;line-height:1.15;color:var(--ink)}
+    .milestone-chance{display:block;font-size:9px;line-height:1.2;color:var(--brand);margin-top:5px}
+    .milestone-chance strong{font-size:15px}
+    .milestone-chance.chance-low strong{color:#99434c}
+    .milestone-chance.chance-high strong{color:#24614f}
+    .milestone-chance.chance-neutral strong,.milestone-chance.chance-unknown strong{color:var(--ink)}
+    @media print{
+      .milestone-date{font-size:4.7pt;margin-bottom:1mm}
+      .milestone-pair{gap:2mm}
+      .milestone-entry small{font-size:4.3pt}
+      .milestone-entry strong{font-size:8.6pt}
+      .milestone-chance{font-size:4.6pt;margin-top:.8mm}
+      .milestone-chance strong{font-size:8pt}
+    }
   </style>
   <style>
     .metric-benchmark{font-size:11px;line-height:1.35}.cell-date,.result-line{font-size:10px}.cell-note{font-size:9px}.range-chip{font-size:8px}@media print{.metric-benchmark{font-size:5.2pt}.cell-date{font-size:5pt}.cell-note,.result-line{font-size:4.6pt}.range-chip{font-size:4.2pt}}
@@ -35,11 +55,11 @@
       {{RESULT_SUMMARY}}
       <table>
         <colgroup><col class="metric"><col class="baseline"><col class="forecast"><col class="actual"></colgroup>
-        <thead><tr><th>Indicator</th><th>{{BASELINE_HEADING}}</th><th>Forecast</th><th>Actual and interpretation</th></tr></thead>
+        <thead><tr><th>Indicator</th><th>{{BASELINE_HEADING}}</th><th>{{FORECAST_HEADING}}</th><th>{{ACTUAL_HEADING}}</th></tr></thead>
         <tbody>{{METRIC_ROWS}}</tbody>
       </table>
       <section class="method">
-        <p><strong>How to read this.</strong> Outlooks are one-month-ahead forecasts made only with information available before release. The 80% range reflects historic one-step forecast errors. Provider signals compare actual performance with a path fixed six months earlier; they are prompts for review, not rankings.</p>
+        <p><strong>How to read this.</strong> Outlooks are one-month-ahead forecasts made only with information available before release. The 80% range reflects historic forecast errors. The target-date column compares the projected value with the stated threshold for the indicated month. The chance is provisional and model-implied, estimated from the projected 80% range assuming a Normal distribution; it is not a validated probability of policy success or of sustaining the standard. Provider signals compare actual performance with a path fixed six months earlier; they are prompts for review, not rankings.</p>
         <p class="sources"><strong>Sources.</strong> {{SOURCES}}. Planning milestones and standards are cited in each indicator deep dive.</p>
       </section>
     </main>

@@ -443,7 +443,7 @@ outlook_provider_explorer_script <- function() paste0(
   "document.querySelectorAll('[data-provider-explorer]').forEach(function(root){",
   "var select=root.querySelector('[data-provider-select]'),svg=root.querySelector('[data-provider-chart]'),summary=root.querySelector('[data-provider-summary]'),ns='http://www.w3.org/2000/svg';if(!select||!svg)return;",
   "function add(tag,attrs,text){var el=document.createElementNS(ns,tag);Object.keys(attrs||{}).forEach(function(k){el.setAttribute(k,attrs[k]);});if(text!==undefined)el.textContent=text;svg.appendChild(el);return el;}function fmt(v){var d=Number(root.dataset.digits||1);return root.dataset.unit==='proportion'?(v*100).toFixed(d)+'%':v.toFixed(d);}",
-  "function draw(){var o=select.options[select.selectedIndex],f=o.dataset.forecast.split('|').map(Number),a=o.dataset.actual.split('|').map(Number),m=o.dataset.months.split('|'),all=f.concat(a),lo=Math.min.apply(null,all),hi=Math.max.apply(null,all),pad=Math.max((hi-lo)*.15,root.dataset.unit==='proportion'?.005:.25);lo-=pad;hi+=pad;var x=function(i){return 58+i*664/Math.max(1,a.length-1);},y=function(v){return 142-(v-lo)*112/Math.max(1e-9,hi-lo);},pts=function(v){return v.map(function(n,i){return x(i).toFixed(1)+','+y(n).toFixed(1);}).join(' ');};svg.replaceChildren();[0,.5,1].forEach(function(q){var yy=142-q*112,val=lo+q*(hi-lo);add('line',{x1:58,x2:722,y1:yy,y2:yy,class:'explorer-grid'});add('text',{x:50,y:yy+4,'text-anchor':'end',class:'explorer-axis'},fmt(val));});add('polyline',{points:pts(f),class:'explorer-forecast'});add('polyline',{points:pts(a),class:'explorer-actual'});add('circle',{cx:x(f.length-1),cy:y(f[f.length-1]),r:4,class:'explorer-dot-forecast'});add('circle',{cx:x(a.length-1),cy:y(a[a.length-1]),r:4,class:'explorer-dot-actual'});add('text',{x:58,y:164,'text-anchor':'start',class:'explorer-axis'},m[0]);add('text',{x:722,y:164,'text-anchor':'end',class:'explorer-axis'},m[m.length-1]);var gap=a[a.length-1]-f[f.length-1];summary.textContent=o.dataset.name+' — actual '+fmt(a[a.length-1])+', fixed forecast '+fmt(f[f.length-1])+' ('+(gap>=0?'+':'')+(root.dataset.unit==='proportion'?(gap*100).toFixed(Number(root.dataset.digits||1))+'pp':fmt(gap))+', latest month)';document.querySelectorAll('.distribution-dot').forEach(function(d){d.classList.toggle('selected',d.dataset.providerId===o.value);});}",
+  "function draw(){var o=select.options[select.selectedIndex],f=o.dataset.forecast.split('|').map(Number),a=o.dataset.actual.split('|').map(Number),m=o.dataset.months.split('|'),all=f.concat(a),lo=Math.min.apply(null,all),hi=Math.max.apply(null,all),pad=Math.max((hi-lo)*.15,root.dataset.unit==='proportion'?.005:.25);lo-=pad;hi+=pad;if(root.dataset.unit==='proportion'){lo=Math.max(0,lo);hi=Math.min(1,hi);}else{lo=Math.max(0,lo);}var x=function(i){return 58+i*664/Math.max(1,a.length-1);},y=function(v){return 142-(v-lo)*112/Math.max(1e-9,hi-lo);},pts=function(v){return v.map(function(n,i){return x(i).toFixed(1)+','+y(n).toFixed(1);}).join(' ');};svg.replaceChildren();[0,.5,1].forEach(function(q){var yy=142-q*112,val=lo+q*(hi-lo);add('line',{x1:58,x2:722,y1:yy,y2:yy,class:'explorer-grid'});add('text',{x:50,y:yy+4,'text-anchor':'end',class:'explorer-axis'},fmt(val));});add('polyline',{points:pts(f),class:'explorer-forecast'});add('polyline',{points:pts(a),class:'explorer-actual'});add('circle',{cx:x(f.length-1),cy:y(f[f.length-1]),r:4,class:'explorer-dot-forecast'});add('circle',{cx:x(a.length-1),cy:y(a[a.length-1]),r:4,class:'explorer-dot-actual'});add('text',{x:58,y:164,'text-anchor':'start',class:'explorer-axis'},m[0]);add('text',{x:722,y:164,'text-anchor':'end',class:'explorer-axis'},m[m.length-1]);var gap=a[a.length-1]-f[f.length-1];summary.textContent=o.dataset.name+' — actual '+fmt(a[a.length-1])+', fixed forecast '+fmt(f[f.length-1])+' ('+(gap>=0?'+':'')+(root.dataset.unit==='proportion'?(gap*100).toFixed(Number(root.dataset.digits||1))+'pp':fmt(gap))+', latest month)';document.querySelectorAll('.distribution-dot').forEach(function(d){d.classList.toggle('selected',d.dataset.providerId===o.value);});}",
   "select.addEventListener('change',draw);document.querySelectorAll('.distribution-dot[data-provider-id]').forEach(function(dot){function choose(){var opt=Array.from(select.options).find(function(o){return o.value===dot.dataset.providerId;});if(opt){select.value=opt.value;draw();root.scrollIntoView({behavior:'smooth',block:'nearest'});}}dot.addEventListener('click',choose);dot.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();choose();}});});draw();});"
 )
 
@@ -682,7 +682,8 @@ outlook_provider_spark_svg <- function(path, provider_id) {
   if (nrow(z) < 2L) return("")
   values <- c(z$predicted_performance, z$actual_performance)
   padding <- max(diff(range(values)) * 0.12, 0.005)
-  y_min <- min(values) - padding; y_max <- max(values) + padding
+  y_min <- max(0, min(values) - padding)
+  y_max <- min(1, max(values) + padding)
   x <- seq(6, 104, length.out = nrow(z))
   y <- function(value) 40 - (value - y_min) * 34 / max(1e-9, y_max - y_min)
   points <- function(value) paste(
@@ -805,6 +806,67 @@ build_ae_outlook_page <- function(
     outlook_format_percent(target_performance, digits = 0L),
     " 2028/29 milestone"
   )
+  # A&E is built in stage 11 (not stage 17). Use the same March 2027
+  # reference forecast and 80% interval as the overview probability.
+  milestone_rows <- medium_forecast[
+    as.Date(forecast_month) == as.Date(intermediate_target_month)
+  ]
+  if (nrow(milestone_rows) != 1L) {
+    stop("A&E target-date outlook requires exactly one reference projection.")
+  }
+  milestone_projection <- milestone_rows$predicted_performance[1L]
+  milestone_probability <- if (all(c("lower_80", "upper_80") %in%
+                                  names(milestone_rows))) {
+    nhs_target_probability(
+      point = milestone_projection,
+      lower_80 = milestone_rows$lower_80[1L],
+      upper_80 = milestone_rows$upper_80[1L],
+      target = intermediate_target_performance, higher_is_better = TRUE
+    )
+  } else {
+    NA_real_
+  }
+  # For scored/outturn pages, the target-date probability must be the value
+  # recorded with the *issued* forecast. A newly rebuilt medium-term reference
+  # projection would otherwise rewrite the historical probability after outturn.
+  if (!is.na(actual)) {
+    issued_path <- "output/performance/latest_published_forecast_rows.csv"
+    issued <- if (file.exists(issued_path)) {
+      tryCatch(data.table::fread(issued_path), error = function(e) NULL)
+    } else NULL
+    issued_row <- if (!is.null(issued) && all(c(
+      "metric_id", "forecast_month", "projected_target_value", "target_month",
+      "target_value", "target_probability"
+    ) %in% names(issued))) {
+      issued[metric_id == "ae4h_all" &
+               as.Date(forecast_month) == as.Date(forecast_row$forecast_month[1L])]
+    } else data.table::data.table()
+    if (nrow(issued_row) == 1L) {
+      milestone_projection <- issued_row$projected_target_value[1L]
+      milestone_probability <- issued_row$target_probability[1L]
+      intermediate_target_month <- as.Date(issued_row$target_month[1L])
+      intermediate_target_performance <- issued_row$target_value[1L]
+    } else {
+      # Do not label a projection rebuilt after the result as 'at issue'.
+      milestone_projection <- NA_real_
+      milestone_probability <- NA_real_
+    }
+  }
+  target_or_actual_card <- if (is.na(actual)) {
+    nhs_target_card_html(
+      projected = milestone_projection,
+      target = intermediate_target_performance,
+      target_month = intermediate_target_month,
+      unit = "proportion", digits = 1L,
+      higher_is_better = TRUE, probability = milestone_probability
+    )
+  } else {
+    paste0('<div class="card"><div class="label">Actual</div>',
+           '<div class="value">', outlook_format_percent(actual), '</div>',
+           '<div class="note">', outlook_html_escape(forecast_error),
+           '</div><span class="status">', outlook_html_escape(standard_text),
+           '</span></div>')
+  }
   actual_value <- if (is.na(actual)) "—" else outlook_format_percent(actual)
   direction_months_required <- ceiling(
     provider_window_months * provider_direction_share - 1e-8
@@ -880,6 +942,14 @@ build_ae_outlook_page <- function(
     LATEST_PUBLISHED = outlook_format_percent(
       forecast_row$latest_actual_performance[1L]
     ),
+    TARGET_OR_ACTUAL_CARD = target_or_actual_card,
+    TARGET_DATE_STRIP = if (!is.na(actual)) nhs_target_strip_html(
+      projected = milestone_projection,
+      target = intermediate_target_performance,
+      target_month = intermediate_target_month,
+      unit = "proportion", digits = 1L, higher_is_better = TRUE,
+      probability = milestone_probability
+    ) else "",
     ACTUAL_VALUE = actual_value,
     FORECAST_ERROR = if (is.na(actual)) forecast_error else paste0(
       outlook_format_pp(abs(100 * (actual - forecast_row$latest_actual_performance[1L]))),

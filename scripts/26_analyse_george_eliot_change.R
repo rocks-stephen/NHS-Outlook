@@ -5,6 +5,7 @@ required <- c('dplyr','readr','tidyr','ggplot2')
 missing <- setdiff(required, rownames(installed.packages()))
 if(length(missing)) stop('Install project dependencies using the project setup script: ', paste(missing,collapse=', '))
 suppressPackageStartupMessages({library(dplyr);library(readr);library(tidyr);library(ggplot2)})
+source("R/utils.R")  # bounded percentage chart axes
 input <- 'output/deep-dives/george-eliot/george_eliot_panel.csv'
 out <- 'output/deep-dives/george-eliot/change-analysis'
 if(!file.exists(input)) stop('Run the flow refresh first; missing ',input)
@@ -44,6 +45,16 @@ write_csv(matched_summary,file.path(out,'04_matched_summary.csv'))
 labels<-c(ae_within4_pct='A&E four-hour performance (%)',ae_all_attendances='Monthly A&E attendances',ga_occupancy_pct='G&A occupancy (%)',drd_delayed_days_share_pct='DRD delayed bed days / available bed days (%)',los21_occupied_share_pct='21+ day stays / occupied beds (%)',weekend_share_pct='Weekend share of discharges (%)',weekend_weekday_daily_ratio='Weekend / weekday discharge per-day ratio')
 for(v in metrics){
   q<-ggplot(p,aes(x=month,y=.data[[v]]))+geom_line(na.rm=TRUE)+geom_point(size=1.4,na.rm=TRUE)+geom_vline(xintercept=as.Date('2025-07-01'),linetype=3)+geom_vline(xintercept=as.Date('2026-03-01'),linetype=2)+labs(title=paste('George Eliot:',labels[[v]]),subtitle='Dotted: July 2025; dashed: March 2026',x=NULL,y=NULL)+theme_minimal(base_size=12)
+  # Percentage shares have physical limits; occupancy can legitimately be
+  # reported above 100% against nominal bed availability, so do not cap it.
+  if (grepl('_pct$', v) && v != 'ga_occupancy_pct') {
+    q <- q + scale_y_continuous(
+      limits=nhs_percentage_axis_limits,
+      breaks=nhs_percentage_axis_breaks,
+      oob=scales::oob_keep,
+      expand=expansion(mult=0)
+    )
+  }
   ggsave(file.path(out,paste0('chart_',v,'.png')),q,width=9,height=4,dpi=160)
 }
 # Exploratory first-difference and one-month-lag correlations; descriptive only, no causal interpretation.

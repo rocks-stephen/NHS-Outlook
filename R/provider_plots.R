@@ -49,7 +49,13 @@ plot_provider_next_release_extremes <- function(next_forecast, config) {
     ggplot2::geom_point(
       shape = 21, size = 2.8, stroke = 0.7, fill = "white", colour = "#702082"
     ) +
-    ggplot2::scale_x_continuous(labels = function(x) paste0(round(100 * x), "%")) +
+    ggplot2::scale_x_continuous(
+      labels = function(x) paste0(round(100 * x), "%"),
+      limits = nhs_proportion_axis_limits,
+      breaks = nhs_proportion_axis_breaks,
+      oob = scales::oob_keep,
+      expand = ggplot2::expansion(mult = 0)
+    ) +
     ggplot2::labs(
       title = "Highest and lowest provider forecasts for the next release",
       subtitle = "Point forecasts with empirical 80% and 95% ranges; providers are compared with their own history in the watchlist",
@@ -71,7 +77,13 @@ plot_provider_forecast_distribution <- function(next_forecast, config) {
     ggplot2::geom_histogram(
       binwidth = 0.025, boundary = 0, fill = "#702082", colour = "white"
     ) +
-    ggplot2::scale_x_continuous(labels = function(x) paste0(round(100 * x), "%")) +
+    ggplot2::scale_x_continuous(
+      labels = function(x) paste0(round(100 * x), "%"),
+      limits = nhs_proportion_axis_limits,
+      breaks = nhs_proportion_axis_breaks,
+      oob = scales::oob_keep,
+      expand = ggplot2::expansion(mult = 0)
+    ) +
     ggplot2::labs(
       title = "Distribution of provider forecasts for the next release",
       subtitle = "Provider forecasts are shown descriptively; the national milestone is not treated as an equal provider threshold",
@@ -169,7 +181,13 @@ plot_provider_flagged_trajectories <- function(deviations, watchlist, config) {
       "Actual" = "#333333",
       "Fixed forecast" = "#702082"
     )) +
-    ggplot2::scale_y_continuous(labels = function(x) paste0(round(100 * x), "%")) +
+    ggplot2::scale_y_continuous(
+      labels = function(x) paste0(round(100 * x), "%"),
+      limits = nhs_proportion_axis_limits,
+      breaks = nhs_proportion_axis_breaks,
+      oob = scales::oob_keep,
+      expand = ggplot2::expansion(mult = 0)
+    ) +
     ggplot2::labs(
       title = "Actual and expected performance for flagged providers",
       subtitle = "Endpoint separation is the latest-month gap; the preceding months check persistence",

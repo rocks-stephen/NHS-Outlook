@@ -81,7 +81,9 @@ build_core_metric_diagnostics <- function(national_panel, metric_row,
   } else {
     "deteriorated"
   }
-  explanation <- if (has_counts) {
+  explanation <- if (identical(metric_id, "ambulance_cat2")) {
+    "Monthly and annual Category 2 response-time changes are reported in minutes."
+  } else if (has_counts) {
     paste0(
       metric_row$display_name[1L], " ", direction, " in the latest month. ",
       labels$denominator, " changed by ", diagnostic_count(denominator_change),
@@ -106,6 +108,22 @@ build_core_metric_diagnostics <- function(national_panel, metric_row,
     outside_standard_change = outside_change, interpretation = explanation
   )
   data.table::fwrite(summary, file.path(output_dir, paste0(metric_id, "_summary.csv")))
+  # Ambulance Category 2 has no reconciled activity volume in this input.
+  # Show observed changes without boilerplate prose or empty-volume placeholders.
+  if (identical(metric_id, "ambulance_cat2")) {
+    return(list(
+      summary = summary,
+      html = "",
+      compact_html = paste0(
+        '<section class="what-changed"><div class="what-changed-heading">',
+        '<span>Recent changes</span></div><div class="what-changed-stats">',
+        '<div><span>Monthly change</span><strong>', change_label(mom),
+        ' min</strong></div>',
+        '<div><span>Annual change</span><strong>', change_label(yoy),
+        ' min</strong></div></div></section>'
+      )
+    ))
+  }
   cards <- paste0(
     '<div class="diagnostic-cards">',
     '<div><span>Latest monthly change</span><strong>', change_label(mom),
@@ -328,6 +346,20 @@ build_ae_diagnostics <- function(national, provider_panel,
        compact_html = compact_html)
 }
 
+# Calculate RTT within-18-week counts without treating truly missing waits as zero.
+# In the full CSV, zero-pathway rows can have blank weekly cells. Those rows
+# contribute exactly zero; a positive-total row with a missing weekly band
+# remains NA and cannot safely be used in a specialty aggregation.
+rtt_diagnostic_within_18_rows <- function(x, week_columns) {
+  bands <- as.matrix(x[, ..week_columns])
+  within <- rowSums(bands, na.rm = FALSE)
+  observed <- rowSums(bands, na.rm = TRUE)
+  empty_zero_rows <- is.finite(x$total_all) & x$total_all == 0 &
+    !is.finite(within) & is.finite(observed) & observed == 0
+  within[empty_zero_rows] <- 0
+  within
+}
+
 rtt_diagnostic_read_month <- function(row) {
   path <- row$local_path
   temporary_directory <- NULL
@@ -349,6 +381,9 @@ rtt_diagnostic_read_month <- function(row) {
     "^gt_[0-9]{2}_to_([0-9]{2})_weeks_sum_1$", "\\1", week_clean
   ))
   week_clean <- week_clean[upper <= 18L]
+  if (length(week_clean) != 18L) {
+    stop("RTT diagnostic source must contain 18 weekly bands ending at week 18.")
+  }
   wanted <- c(
     "provider_org_code", "provider_org_name", "rtt_part_type",
     "treatment_function_code", "treatment_function_name", "total_all", week_clean
@@ -366,7 +401,7 @@ rtt_diagnostic_read_month <- function(row) {
   for (column in c("total_all", week_clean)) {
     data.table::set(x, j = column, value = suppressWarnings(as.numeric(x[[column]])))
   }
-  x[, within_18 := rowSums(.SD, na.rm = FALSE), .SDcols = week_clean]
+  x[, within_18 := rtt_diagnostic_within_18_rows(x, week_clean)]
   x[, calendar_month := data.table::as.IDate(row$activity_month)]
   x[
     !is.na(provider_org_code) & nzchar(trimws(provider_org_code)) &
@@ -466,6 +501,41 @@ build_rtt_diagnostics <- function(download_manifest,
     performance = incomplete_within_18 / incomplete_total
   )]
   data.table::setorder(specialty_change, -over_18_change)
+
+  # The descriptive specialty page needs current waiting-list levels, not the
+  # matched-month changes used for the RTT stock/flow diagnostic above.
+  # Do not silently turn missing elapsed-wait bands into zero.
+  specialty_levels <- raw[
+    !is.na(treatment_function_code) & nzchar(trimws(treatment_function_code)) &
+      treatment_function_code != "C_999" & rtt_part_type == "Part_2" &
+      calendar_month == latest_month,
+    .(
+      specialty_name = core_latest_nonmissing_character(treatment_function_name),
+      total_waiting_list = sum(total_all),
+      within_18_weeks_count = if (all(is.finite(within_18))) {
+        sum(within_18)
+      } else {
+        NA_real_
+      },
+      provider_rows = .N,
+      unresolved_positive_rows = sum(total_all > 0 & !is.finite(within_18)),
+      unresolved_pathways = sum(
+        total_all[total_all > 0 & !is.finite(within_18)], na.rm = TRUE
+      )
+    ), by = .(calendar_month, specialty_code = treatment_function_code)
+  ]
+  specialty_levels[, `:=`(
+    over_18_weeks_count = total_waiting_list - within_18_weeks_count,
+    within_18_weeks_proportion = within_18_weeks_count / total_waiting_list
+  )]
+  specialty_levels[, complete_submission :=
+    is.finite(total_waiting_list) & total_waiting_list > 0 &
+      is.finite(within_18_weeks_count) & within_18_weeks_count >= 0 &
+      within_18_weeks_count <= total_waiting_list
+  ]
+  data.table::fwrite(
+    specialty_levels, file.path(output_dir, "rtt_specialty_levels.csv")
+  )
   balance <- current$new_rtt_periods - current$completions
   interpretation <- if (balance > 0) {
     paste0(
@@ -551,5 +621,6 @@ build_rtt_diagnostics <- function(download_manifest,
     diagnostic_count(balance), '</strong></div></div></section>'
   )
   list(summary = summary, providers = changes, specialties = specialty_change,
+       specialty_levels = specialty_levels,
        html = html, compact_html = compact_html)
 }

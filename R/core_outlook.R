@@ -199,7 +199,9 @@ core_provider_spark_svg <- function(path, entity_id, metric_row) {
   values <- c(z$predicted_value, z$actual_value)
   padding <- max(diff(range(values)) * 0.12,
     if (metric_row$unit[1L] == "proportion") 0.005 else 0.25)
-  y_min <- min(values) - padding; y_max <- max(values) + padding
+  y_min <- max(0, min(values) - padding)
+  y_max <- max(values) + padding
+  if (metric_row$unit[1L] == "proportion") y_max <- min(1, y_max)
   x <- seq(6, 104, length.out = nrow(z))
   y <- function(value) 40 - (value - y_min) * 34 / max(1e-9, y_max - y_min)
   points <- function(value) paste(
@@ -434,7 +436,7 @@ provider_explorer_script <- function() paste0(
   "var select=root.querySelector('[data-provider-select]'),svg=root.querySelector('[data-provider-chart]'),summary=root.querySelector('[data-provider-summary]'),ns='http://www.w3.org/2000/svg';",
   "if(!select||!svg)return;function add(tag,attrs,text){var el=document.createElementNS(ns,tag);Object.keys(attrs||{}).forEach(function(k){el.setAttribute(k,attrs[k]);});if(text!==undefined)el.textContent=text;svg.appendChild(el);return el;}",
   "function fmt(v){var d=Number(root.dataset.digits||1);return root.dataset.unit==='proportion'?(v*100).toFixed(d)+'%':v.toFixed(d);}",
-  "function draw(){var o=select.options[select.selectedIndex],f=o.dataset.forecast.split('|').map(Number),a=o.dataset.actual.split('|').map(Number),m=o.dataset.months.split('|'),all=f.concat(a),lo=Math.min.apply(null,all),hi=Math.max.apply(null,all),pad=Math.max((hi-lo)*.15,root.dataset.unit==='proportion'?.005:.25);lo-=pad;hi+=pad;var x=function(i){return 58+i*664/Math.max(1,a.length-1);},y=function(v){return 142-(v-lo)*112/Math.max(1e-9,hi-lo);},pts=function(v){return v.map(function(n,i){return x(i).toFixed(1)+','+y(n).toFixed(1);}).join(' ');};svg.replaceChildren();[0,.5,1].forEach(function(q){var yy=142-q*112,val=lo+q*(hi-lo);add('line',{x1:58,x2:722,y1:yy,y2:yy,class:'explorer-grid'});add('text',{x:50,y:yy+4,'text-anchor':'end',class:'explorer-axis'},fmt(val));});add('polyline',{points:pts(f),class:'explorer-forecast'});add('polyline',{points:pts(a),class:'explorer-actual'});add('circle',{cx:x(f.length-1),cy:y(f[f.length-1]),r:4,class:'explorer-dot-forecast'});add('circle',{cx:x(a.length-1),cy:y(a[a.length-1]),r:4,class:'explorer-dot-actual'});add('text',{x:58,y:164,'text-anchor':'start',class:'explorer-axis'},m[0]);add('text',{x:722,y:164,'text-anchor':'end',class:'explorer-axis'},m[m.length-1]);var gap=a[a.length-1]-f[f.length-1];summary.textContent=o.dataset.name+' — actual '+fmt(a[a.length-1])+', fixed forecast '+fmt(f[f.length-1])+' ('+(gap>=0?'+':'')+(root.dataset.unit==='proportion'?(gap*100).toFixed(Number(root.dataset.digits||1))+'pp':fmt(gap))+', latest month)';document.querySelectorAll('.distribution-dot').forEach(function(d){d.classList.toggle('selected',d.dataset.providerId===o.value);});}",
+  "function draw(){var o=select.options[select.selectedIndex],f=o.dataset.forecast.split('|').map(Number),a=o.dataset.actual.split('|').map(Number),m=o.dataset.months.split('|'),all=f.concat(a),lo=Math.min.apply(null,all),hi=Math.max.apply(null,all),pad=Math.max((hi-lo)*.15,root.dataset.unit==='proportion'?.005:.25);lo-=pad;hi+=pad;if(root.dataset.unit==='proportion'){lo=Math.max(0,lo);hi=Math.min(1,hi);}else{lo=Math.max(0,lo);}var x=function(i){return 58+i*664/Math.max(1,a.length-1);},y=function(v){return 142-(v-lo)*112/Math.max(1e-9,hi-lo);},pts=function(v){return v.map(function(n,i){return x(i).toFixed(1)+','+y(n).toFixed(1);}).join(' ');};svg.replaceChildren();[0,.5,1].forEach(function(q){var yy=142-q*112,val=lo+q*(hi-lo);add('line',{x1:58,x2:722,y1:yy,y2:yy,class:'explorer-grid'});add('text',{x:50,y:yy+4,'text-anchor':'end',class:'explorer-axis'},fmt(val));});add('polyline',{points:pts(f),class:'explorer-forecast'});add('polyline',{points:pts(a),class:'explorer-actual'});add('circle',{cx:x(f.length-1),cy:y(f[f.length-1]),r:4,class:'explorer-dot-forecast'});add('circle',{cx:x(a.length-1),cy:y(a[a.length-1]),r:4,class:'explorer-dot-actual'});add('text',{x:58,y:164,'text-anchor':'start',class:'explorer-axis'},m[0]);add('text',{x:722,y:164,'text-anchor':'end',class:'explorer-axis'},m[m.length-1]);var gap=a[a.length-1]-f[f.length-1];summary.textContent=o.dataset.name+' — actual '+fmt(a[a.length-1])+', fixed forecast '+fmt(f[f.length-1])+' ('+(gap>=0?'+':'')+(root.dataset.unit==='proportion'?(gap*100).toFixed(Number(root.dataset.digits||1))+'pp':fmt(gap))+', latest month)';document.querySelectorAll('.distribution-dot').forEach(function(d){d.classList.toggle('selected',d.dataset.providerId===o.value);});}",
   "select.addEventListener('change',draw);document.querySelectorAll('.distribution-dot[data-provider-id]').forEach(function(dot){function choose(){var opt=Array.from(select.options).find(function(o){return o.value===dot.dataset.providerId;});if(opt){select.value=opt.value;draw();root.scrollIntoView({behavior:'smooth',block:'nearest'});}}dot.addEventListener('click',choose);dot.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();choose();}});});draw();});"
 )
 
@@ -734,19 +736,21 @@ core_outlook_commentary <- function(
   )
 }
 
-core_community_service_rows_html <- function(service_summary, maximum_rows = 15L) {
-  if (!nrow(service_summary)) {
-    return('<div class="service-empty">No service-level rows were available.</div>')
+# The two optional descriptive pages share a layout but retain their distinct
+# measurement units: community service groups vs RTT treatment specialties.
+core_waits_breakdown_rows_html <- function(rows, maximum_rows = 15L) {
+  if (!nrow(rows)) {
+    return('<div class="service-empty">No complete category rows were available.</div>')
   }
-  z <- data.table::copy(service_summary[
-    geography_type == "England" & complete_submission == TRUE &
-      is.finite(total_waiting_list) & total_waiting_list > 0 &
-      is.finite(over_18_weeks_count)
+  z <- data.table::copy(rows[
+    is.finite(total_waiting_list) & total_waiting_list > 0 &
+      is.finite(over_18_weeks_count) & over_18_weeks_count >= 0 &
+      is.finite(within_18_weeks_proportion)
   ])
   if (!nrow(z)) {
-    return('<div class="service-empty">No complete England service rows were available.</div>')
+    return('<div class="service-empty">No complete category rows were available.</div>')
   }
-  data.table::setorder(z, -over_18_weeks_count, -total_waiting_list, service_name)
+  data.table::setorder(z, -over_18_weeks_count, -total_waiting_list, display_label)
   z <- utils::head(z, maximum_rows)
   maximum_over_18 <- max(z$over_18_weeks_count)
   paste(vapply(seq_len(nrow(z)), function(i) {
@@ -757,7 +761,7 @@ core_community_service_rows_html <- function(service_summary, maximum_rows = 15L
     }
     paste0(
       '<div class="service-row"><div><div class="service-name">',
-      performance_html_escape(z$service_name[i]),
+      performance_html_escape(z$display_label[i]),
       '</div><div class="service-bar-track"><span style="width:',
       sprintf("%.1f", bar_width), '%"></span></div></div>',
       '<div class="service-number">',
@@ -772,31 +776,108 @@ core_community_service_rows_html <- function(service_summary, maximum_rows = 15L
 }
 
 core_community_service_page <- function(service_summary, latest_month) {
-  if (!nrow(service_summary)) return(list(
-    available = FALSE, services_total = 0L, services_complete = 0L,
-    rows_html = '<div class="service-empty">No service-level rows were available.</div>',
-    note = "No service-level rows were imported."
-  ))
-  latest <- data.table::copy(service_summary[
+  latest <- if (nrow(service_summary)) data.table::copy(service_summary[
     calendar_month == data.table::as.IDate(latest_month) &
       geography_type == "England"
-  ])
-  services_total <- latest[is.finite(total_waiting_list), data.table::uniqueN(service_id)]
-  services_complete <- latest[
+  ]) else data.table::data.table()
+  services_total <- if (nrow(latest)) latest[
+    is.finite(total_waiting_list), data.table::uniqueN(service_id)
+  ] else 0L
+  services_complete <- if (nrow(latest)) latest[
     complete_submission == TRUE, data.table::uniqueN(service_id)
-  ]
+  ] else 0L
+  rows <- if (nrow(latest)) latest[
+    complete_submission == TRUE & is.finite(total_waiting_list) &
+      total_waiting_list > 0 & is.finite(over_18_weeks_count)
+  ] else data.table::data.table()
+  if (nrow(rows)) {
+    # Published service names recur legitimately for adults and CYP.
+    # Keep each distinct source category and visibly identify its population.
+    rows[, display_label := paste0(service_name, " (", service_group, ")")]
+  }
   list(
     available = services_total > 0L,
     services_total = services_total,
     services_complete = services_complete,
-    rows_html = core_community_service_rows_html(latest),
+    rows_html = core_waits_breakdown_rows_html(rows),
     note = paste0(
       "Ranked by the published number waiting over 18 weeks. Complete over-18 ",
       "bands were available for ", services_complete, " of ", services_total,
       " services with a reported total. Rows with suppressed or incomplete bands ",
       "are excluded from the ranking. The national headline on page 1 remains the ",
       "authoritative aggregate."
-    )
+    ),
+    page_label = "Service view",
+    page_title = "Community waits by service",
+    mix_label = "Service mix",
+    page_description = paste0(
+      "Adult and children and young people services are shown separately. ",
+      "The ranking is descriptive, not a forecast or provider comparison."
+    ),
+    total_label = "services with a reported total waiting list",
+    complete_label = "services with complete over-18-week bands",
+    category_label = "Service",
+    method_note = paste0(
+      "The within-18-week percentage is total waiting less published over-18-week ",
+      "bands, divided by the total. Published weekly bands may not reconcile ",
+      "exactly to the total; reconciliation differences are retained in QA."
+    ),
+    source_label = "NHS England community health services waiting lists"
+  )
+}
+
+core_rtt_specialty_page <- function(specialty_levels, latest_month) {
+  latest <- if (nrow(specialty_levels)) data.table::copy(specialty_levels[
+    calendar_month == data.table::as.IDate(latest_month)
+  ]) else data.table::data.table()
+  services_total <- if (nrow(latest)) latest[
+    is.finite(total_waiting_list), data.table::uniqueN(specialty_code)
+  ] else 0L
+  services_complete <- if (nrow(latest)) latest[
+    complete_submission == TRUE, data.table::uniqueN(specialty_code)
+  ] else 0L
+  rows <- if (nrow(latest)) latest[
+    complete_submission == TRUE
+  ] else data.table::data.table()
+  if (nrow(rows)) {
+    rows[, display_label := data.table::fifelse(
+      !is.na(specialty_name) & nzchar(trimws(specialty_name)),
+      specialty_name,
+      paste0("Treatment function ", specialty_code)
+    )]
+    # Distinct treatment-function codes can share a descriptive name.
+    duplicate_labels <- rows[, .N, by = display_label][N > 1L, display_label]
+    rows[display_label %in% duplicate_labels,
+         display_label := paste0(display_label, " (", specialty_code, ")")]
+  }
+  list(
+    available = services_complete > 0L,
+    services_total = services_total,
+    services_complete = services_complete,
+    rows_html = core_waits_breakdown_rows_html(rows),
+    note = paste0(
+      "Ranked by the number of incomplete RTT pathways waiting over 18 weeks. ",
+      "Only specialties with valid elapsed-wait bands are included. ",
+      "These provider-reported specialty figures may not sum exactly to ",
+      "the national headline."
+    ),
+    page_label = "Specialty view",
+    page_title = "RTT waits by specialty",
+    mix_label = "Specialty mix",
+    page_description = paste0(
+      "Where incomplete RTT pathways waiting over 18 weeks are concentrated ",
+      "by treatment specialty. A descriptive breakdown, not a forecast ",
+      "or comparison of provider performance."
+    ),
+    total_label = "specialties with reported incomplete pathways",
+    complete_label = "specialties with valid elapsed-wait bands",
+    category_label = "Specialty",
+    method_note = paste0(
+      "The within-18-week percentage is the number of incomplete pathways ",
+      "within 18 weeks divided by total incomplete pathways in the specialty. ",
+      "Pathways are not unique patients."
+    ),
+    source_label = "NHS England referral to treatment provider-level extracts"
   )
 }
 
@@ -809,6 +890,7 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
                                       forecast_method = data.table::data.table(),
                                       forecast_components = data.table::data.table(),
                                       community_service_summary = data.table::data.table(),
+                                      rtt_specialty_levels = data.table::data.table(),
                                       edition = "forecast",
                                       publication_status = "pilot",
                                       diagnostic_html = "",
@@ -876,9 +958,11 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
   } else {
     overview_row$latest_month[1L]
   }
-  service_page <- core_community_service_page(
-    community_service_summary, service_month
-  )
+  service_page <- if (metric_row$metric_id[1L] == "rtt_18w") {
+    core_rtt_specialty_page(rtt_specialty_levels, service_month)
+  } else {
+    core_community_service_page(community_service_summary, service_month)
+  }
   actual_value <- if (is_outturn && "actual_value" %in% names(overview_row)) {
     overview_row$actual_value[1L]
   } else {
@@ -896,6 +980,33 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
     )
   } else {
     "Not yet released"
+  }
+  # The target-date card replaces the empty pre-release Actual card. Keep the
+  # existing Actual card for outturn reports. Reuse the *same* probability
+  # attached to the overview row so headline and deep dive cannot disagree.
+  target_or_actual_card <- if (is_outturn) {
+    paste0(
+      '<div class="card"><div class="label">Actual</div><div class="value">',
+      performance_format_value(actual_value, metric_row$unit[1L], metric_row$digits[1L]),
+      '</div><div class="note">', performance_html_escape(actual_note),
+      '</div><span class="status ', overview_row$trajectory_status[1L], '">',
+      if (overview_row$trajectory_status[1L] == "on_trajectory") "On trajectory" else "Off course",
+      ' · ', performance_html_escape(overview_row$target_label[1L]),
+      '</span></div>'
+    )
+  } else {
+    nhs_target_card_html(
+      projected = overview_row$projected_target_value[1L],
+      target = overview_row$target_value[1L],
+      target_month = overview_row$target_month[1L],
+      unit = metric_row$unit[1L], digits = metric_row$digits[1L],
+      higher_is_better = overview_row$higher_is_better[1L],
+      probability = if ("target_probability" %in% names(overview_row)) {
+        overview_row$target_probability[1L]
+      } else {
+        NA_real_
+      }
+    )
   }
   commentary <- if (is.finite(actual_value)) {
     movement_clause <- if (actual_movement$direction == "stable") {
@@ -961,6 +1072,17 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
     } else {
       performance_latest_comparison_text(overview_row[1L])
     }),
+    TARGET_OR_ACTUAL_CARD = target_or_actual_card,
+    TARGET_DATE_STRIP = if (is_outturn) nhs_target_strip_html(
+      projected = overview_row$projected_target_value[1L],
+      target = overview_row$target_value[1L],
+      target_month = overview_row$target_month[1L],
+      unit = metric_row$unit[1L], digits = metric_row$digits[1L],
+      higher_is_better = overview_row$higher_is_better[1L],
+      probability = if ("target_probability" %in% names(overview_row)) {
+        overview_row$target_probability[1L]
+      } else NA_real_
+    ) else "",
     ACTUAL_VALUE = if (is.finite(actual_value)) performance_format_value(
       actual_value, metric_row$unit[1L], metric_row$digits[1L]
     ) else "—",
@@ -1018,6 +1140,15 @@ build_core_metric_outlook <- function(metric_row, overview_row, national_panel,
     SERVICES_COMPLETE = as.character(service_page$services_complete),
     SERVICE_ROWS = service_page$rows_html,
     SERVICE_NOTE = performance_html_escape(service_page$note),
+    SERVICE_PAGE_LABEL = performance_html_escape(service_page$page_label),
+    SERVICE_PAGE_TITLE = performance_html_escape(service_page$page_title),
+    SERVICE_MIX_LABEL = performance_html_escape(service_page$mix_label),
+    SERVICE_DESCRIPTION = performance_html_escape(service_page$page_description),
+    SERVICE_TOTAL_LABEL = performance_html_escape(service_page$total_label),
+    SERVICE_COMPLETE_LABEL = performance_html_escape(service_page$complete_label),
+    SERVICE_CATEGORY_LABEL = performance_html_escape(service_page$category_label),
+    SERVICE_METHOD_NOTE = performance_html_escape(service_page$method_note),
+    SERVICE_SOURCE_LABEL = performance_html_escape(service_page$source_label),
     DIAGNOSTIC_PAGE_CLASS = if (nzchar(diagnostic_html)) "" else "diagnostic-omitted",
     DIAGNOSTIC_TITLE = performance_html_escape(diagnostic_title),
     DIAGNOSTIC_SUBTITLE = performance_html_escape(diagnostic_subtitle),

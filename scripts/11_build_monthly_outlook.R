@@ -1,6 +1,7 @@
 source("R/utils.R")
 source("R/national_forecast.R")
 source("R/monthly_outlook.R")
+source("R/target_probability.R")
 source("R/diagnostics.R")
 
 national_config <- read_key_value_config("config/national_model.csv")

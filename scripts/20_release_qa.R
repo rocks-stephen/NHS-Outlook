@@ -37,6 +37,7 @@ required_files <- c(
   "output/diagnostics/rtt_summary.csv",
   "output/diagnostics/rtt_provider_contributions.csv",
   "output/diagnostics/rtt_specialty_contributions.csv",
+  "output/diagnostics/rtt_specialty_levels.csv",
   "output/diagnostics/ambulance_cat2_summary.csv",
   "output/diagnostics/diagnostics_6w_summary.csv",
   "output/diagnostics/cancer_62d_summary.csv",
@@ -80,7 +81,7 @@ included_metrics <- model_status[
   model_status %in% c("included", "included_national_only"), metric_id
 ]
 ae_diagnostic <- read_csv("output/diagnostics/ae_summary.csv")
-rtt_diagnostic <- read_csv("output/diagnostics/rtt_summary.csv")
+rtt_diagnostic <- read_csv("output/diagnostics/rtt_summary.csv", "latest_month")
 add_check(
   "diagnostics", "ae4h_all", "ae_breadth_and_demand_outputs_valid", "fatal",
   nrow(ae_diagnostic) == 1L &&
@@ -104,6 +105,43 @@ add_check(
         rtt_diagnostic$list_change),
   "output/diagnostics/rtt_summary.csv"
 )
+rtt_specialty_levels <- read_csv(
+  "output/diagnostics/rtt_specialty_levels.csv", "calendar_month"
+)
+rtt_specialty_complete <- rtt_specialty_levels[complete_submission == TRUE]
+if (isTRUE(getOption("nhs.outlook.enable_rtt_specialty_page", FALSE))) {
+  add_check(
+    "diagnostics", "rtt_18w", "rtt_specialty_levels_valid", "fatal",
+    nrow(rtt_specialty_levels) > 0L &&
+      data.table::uniqueN(rtt_specialty_levels$calendar_month) == 1L &&
+      all(rtt_specialty_levels$calendar_month == rtt_diagnostic$latest_month[1L]) &&
+      !anyDuplicated(rtt_specialty_levels$specialty_code) &&
+      nrow(rtt_specialty_complete) > 0L &&
+      all(is.finite(rtt_specialty_complete$over_18_weeks_count)) &&
+      all(rtt_specialty_complete$over_18_weeks_count >= 0) &&
+      all(rtt_specialty_complete$over_18_weeks_count <=
+            rtt_specialty_complete$total_waiting_list) &&
+      all(rtt_specialty_complete$within_18_weeks_proportion >= 0 &
+            rtt_specialty_complete$within_18_weeks_proportion <= 1),
+    paste0(
+      nrow(rtt_specialty_complete), " of ", nrow(rtt_specialty_levels),
+      " specialties with valid current wait bands; ",
+      sum(rtt_specialty_levels$unresolved_positive_rows, na.rm = TRUE),
+      " positive-total source rows with incomplete weekly bands (",
+      format(sum(rtt_specialty_levels$unresolved_pathways, na.rm = TRUE),
+             big.mark = ",", scientific = FALSE),
+      " pathways)."
+    ),
+    "output/diagnostics/rtt_specialty_levels.csv"
+  )
+} else {
+  add_check(
+    "diagnostics", "rtt_18w", "rtt_specialty_page_deferred", "warning",
+    TRUE,
+    "RTT specialty page intentionally disabled pending validated England-level source; core RTT diagnostics and forecasts remain subject to QA.",
+    "output/diagnostics/rtt_specialty_levels.csv"
+  )
+}
 for (metric in setdiff(included_metrics, "rtt_18w")) {
   diagnostic_path <- file.path("output/diagnostics", paste0(metric, "_summary.csv"))
   diagnostic_row <- read_csv(diagnostic_path)

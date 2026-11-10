@@ -1,6 +1,7 @@
 source("R/utils.R")
 source("R/national_forecast.R")
 source("R/performance_outlook.R")
+source("R/target_probability.R")
 source("R/core_outlook.R")
 source("R/core_import.R")
 source("R/diagnostics.R")
@@ -167,6 +168,7 @@ rows <- merge(
   by = "metric_id", all.x = TRUE, sort = FALSE
 )
 data.table::setorder(rows, display_order)
+rows <- nhs_augment_target_probabilities(rows)
 validate_performance_outlook_rows(rows)
 
 ae_history <- read_performance_csv(
@@ -340,6 +342,15 @@ editorial_commentary <- function(edition_value, month_value) {
   if (nrow(fallback)) fallback$commentary[.N] else ""
 }
 
+if (publication_mode == "forecast") {
+  data.table::fwrite(
+    forecast_rows[, .(metric_id, display_name, target_month, target_value,
+                      projected_target_value, target_probability,
+                      target_probability_method)],
+    file.path(output_data_dir, paste0("target_probabilities_", issue_day,
+                                     revision_suffix, ".csv"))
+  )
+}
 data.table::fwrite(forecast_rows, file.path(output_data_dir, "overview_metric_rows.csv"))
 data.table::fwrite(outturn_rows, file.path(output_data_dir, "outturn_metric_rows.csv"))
 ae_method <- read_performance_csv(
@@ -509,6 +520,14 @@ if (publication_mode %in% c("forecast", "outturn")) {
       forecast_components = forecast_components_core,
       community_service_summary = if (metric == "community_18w") {
         community_service_summary
+      } else {
+        data.table::data.table()
+      },
+      rtt_specialty_levels = if (metric == "rtt_18w" &&
+                                  isTRUE(getOption(
+                                    "nhs.outlook.enable_rtt_specialty_page", FALSE
+                                  ))) {
+        rtt_diagnostics$specialty_levels
       } else {
         data.table::data.table()
       },

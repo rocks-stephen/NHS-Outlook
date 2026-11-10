@@ -1,3 +1,33 @@
+# Display axes for intrinsically bounded proportions, without flattening each
+# chart to a 0%-100% range. Forecast errors (percentage-point differences) must
+# NOT use these functions: those can legitimately be negative.
+nhs_proportion_axis_limits <- function(limits) {
+  if (length(limits) != 2L || any(!is.finite(limits))) return(c(0, 1))
+  z <- pmax(0, pmin(1, as.numeric(limits)))
+  if (z[2L] <= z[1L]) {
+    # Give a constant series a small non-zero display range within bounds.
+    z <- c(max(0, z[1L] - 0.01), min(1, z[2L] + 0.01))
+  }
+  z
+}
+
+nhs_proportion_axis_breaks <- function(limits) {
+  z <- nhs_proportion_axis_limits(limits)
+  candidates <- pretty(z, n = 4L)
+  candidates[candidates >= z[1L] - 1e-10 &
+               candidates <= z[2L] + 1e-10 &
+               candidates >= 0 & candidates <= 1]
+}
+
+# Equivalent helpers for percentage-valued data stored in 0-100 units.
+nhs_percentage_axis_limits <- function(limits) {
+  100 * nhs_proportion_axis_limits(limits / 100)
+}
+
+nhs_percentage_axis_breaks <- function(limits) {
+  100 * nhs_proportion_axis_breaks(limits / 100)
+}
+
 assert_columns <- function(x, required, object_name = deparse(substitute(x))) {
   missing <- setdiff(required, names(x))
   if (length(missing)) stop(object_name, " is missing: ", paste(missing, collapse = ", "))

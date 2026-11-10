@@ -481,7 +481,9 @@ performance_outlook_table_rows <- function(rows) {
       performance_html_escape(row$deep_dive_file), '">',
       performance_html_escape(row$display_name), '</a>'
     )
-    actual_cell <- if (!is.na(row$actual_value)) {
+    is_outturn <- "edition" %in% names(row) &&
+      identical(as.character(row$edition[1L]), "outturn")
+    actual_cell <- if (is_outturn && is.finite(row$actual_value[1L])) {
       actual_movement <- performance_actual_movement(row)
       favourable_error <- if (isTRUE(row$higher_is_better)) {
         row$actual_error_native
@@ -502,30 +504,80 @@ performance_outlook_table_rows <- function(rows) {
       '</span><span class="range-chip ', if (inside) "inside" else "outside", '">',
       if (inside) 'Inside expected range' else 'Outside expected range', '</span>'
       )
-    } else paste0(
-      '<span class="cell-value pending">—</span>',
-      '<span class="cell-date">Not yet released</span>',
-      '<span class="cell-note">Added in the outturn edition</span>'
-    )
-    pieces <- c(pieces, paste0(
-      '<tr class="metric-row">',
-      '<th scope="row">', metric_label,
-      '<span class="metric-benchmark">', performance_html_escape(benchmark),
-      '</span></th>',
-      '<td><span class="cell-value">',
-      performance_format_value(row$latest_value, row$unit, row$digits),
-      '</span><span class="cell-date">',
-      performance_format_short_month(row$latest_month),
-      '</span><span class="cell-note">Known when forecast was made</span></td>',
+    } else {
+      '<span class="pending">Not yet released</span>'
+    }
+
+    # The archived projection and probability are shown in *both* editions.
+    # In the outturn edition the first data column holds the issued forecast,
+    # the second the observed actual, and the third the target-date outlook.
+    target_cell <- local({
+      milestone_month <- performance_format_short_month(row$target_month)
+      target_digits <- if (row$unit == "proportion" &&
+                           abs(100 * row$target_value - round(100 * row$target_value)) < 1e-8) {
+        0L
+      } else if (row$unit == "minutes" &&
+                 abs(row$target_value - round(row$target_value)) < 1e-8) {
+        0L
+      } else {
+        row$digits
+      }
+      threshold <- if (isTRUE(row$higher_is_better)) "&ge;" else "&le;"
+      chance <- if ("target_probability" %in% names(row) &&
+                    is.finite(row$target_probability[1L])) {
+        nhs_format_target_probability(row$target_probability[1L])
+      } else {
+        "Not estimated"
+      }
+      paste0(
+        '<div class="milestone-date">', performance_html_escape(milestone_month),
+        if (is_outturn) ' target-date outlook at issue</div>' else ' target-date outlook</div>',
+        '<div class="milestone-pair">',
+        '<span class="milestone-entry"><small>Projection</small><strong>',
+        performance_format_value(row$projected_target_value, row$unit, row$digits),
+        '</strong></span>',
+        '<span class="milestone-entry"><small>Target</small><strong>',
+        threshold, performance_format_value(row$target_value, row$unit, target_digits),
+        '</strong></span>',
+        '</div>',
+        '<span class="milestone-chance ',
+        nhs_target_chance_class(if ('target_probability' %in% names(row)) {
+          row$target_probability[1L]
+        } else {
+          NA_real_
+        }), '"><strong>',
+        performance_html_escape(chance),
+        '</strong> model-implied chance of meeting target</span>'
+      )
+    })
+    forecast_cell <- paste0(
       '<td class="forecast-cell"><span class="cell-value">',
       performance_format_value(row$forecast_value, row$unit, row$digits),
       '</span><span class="cell-date">',
       performance_format_short_month(row$forecast_month),
-      if ("edition" %in% names(row) && row$edition[1L] == "forecast") paste0(' · ', movement) else '',
+      if (!is_outturn) paste0(' · ', movement) else '',
       '</span><span class="cell-note">80% range ',
-      performance_format_value(row$lower_80, row$unit, row$digits), "–",
+      performance_format_value(row$lower_80, row$unit, row$digits), '–',
       performance_format_value(row$upper_80, row$unit, row$digits),
-      '</span></td><td>', actual_cell, '</td></tr>'
+      '</span></td>'
+    )
+    baseline_cell <- paste0(
+      '<td><span class="cell-value">',
+      performance_format_value(row$latest_value, row$unit, row$digits),
+      '</span><span class="cell-date">',
+      performance_format_short_month(row$latest_month),
+      '</span><span class="cell-note">Known when forecast was made</span></td>'
+    )
+    # Keep the forecasted and realised values together in the outturn.
+    middle_cell <- if (is_outturn) paste0(
+      '<td class="actual-cell">', actual_cell, '</td>'
+    ) else forecast_cell
+    first_cell <- if (is_outturn) forecast_cell else baseline_cell
+    pieces <- c(pieces, paste0(
+      '<tr class="metric-row"><th scope="row">', metric_label,
+      '<span class="metric-benchmark">', performance_html_escape(benchmark),
+      '</span></th>', first_cell, middle_cell,
+      '<td class="milestone-cell">', target_cell, '</td></tr>'
     ))
   }
   paste(pieces, collapse = "")
@@ -680,7 +732,13 @@ build_performance_outlook_page <- function(rows, template_path, output_path,
     } else {
       "What was published, compared with the pre-release outlook"
     },
-    BASELINE_HEADING = if (edition == "forecast") "Latest" else "At forecast",
+    BASELINE_HEADING = if (edition == "forecast") "Latest" else "Forecast at issue",
+    FORECAST_HEADING = if (edition == "forecast") "Forecast" else "Published actual",
+    ACTUAL_HEADING = if (edition == "forecast") {
+      "Target-date outlook"
+    } else {
+      "Target-date outlook at issue"
+    },
     ISSUE_DATE = issue_date,
     N_METRICS = as.character(nrow(rows)),
     COVERAGE_NOTE = coverage_note,

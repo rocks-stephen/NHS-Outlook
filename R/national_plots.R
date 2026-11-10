@@ -74,7 +74,8 @@ plot_national_history_forecast <- function(history, forecast, config) {
     ggplot2::scale_y_continuous(
       labels = function(x) paste0(round(100 * x), "%"),
       limits = c(0.4, 1.0),
-      breaks = seq(0.4, 1.0, 0.1)
+      breaks = seq(0.4, 1.0, 0.1),
+      expand = ggplot2::expansion(mult = 0)
     ) +
     ggplot2::labs(
       title = "all-types A&E four-hour performance: history and reference forecast",
@@ -179,7 +180,13 @@ plot_national_next_release <- function(history, next_release, config, months_sho
       linewidth = 0.45,
       colour = "#C00000"
     ) +
-    ggplot2::scale_y_continuous(labels = function(x) paste0(round(100 * x), "%")) +
+    ggplot2::scale_y_continuous(
+      labels = function(x) paste0(round(100 * x), "%"),
+      limits = nhs_proportion_axis_limits,
+      breaks = nhs_proportion_axis_breaks,
+      oob = scales::oob_keep,
+      expand = ggplot2::expansion(mult = 0)
+    ) +
     ggplot2::coord_cartesian(ylim = c(0.50, 0.90)) +
     ggplot2::labs(
       title = paste0(
@@ -223,7 +230,13 @@ plot_national_one_step_track_record <- function(rolling, config) {
       "Actual" = "#333333",
       "One-month-ahead prediction" = "#702082"
     )) +
-    ggplot2::scale_y_continuous(labels = function(x) paste0(round(100 * x), "%")) +
+    ggplot2::scale_y_continuous(
+      labels = function(x) paste0(round(100 * x), "%"),
+      limits = nhs_proportion_axis_limits,
+      breaks = nhs_proportion_axis_breaks,
+      oob = scales::oob_keep,
+      expand = ggplot2::expansion(mult = 0)
+    ) +
     ggplot2::labs(
       title = "How the one-month-ahead model has tracked the releases",
       subtitle = "Rolling pseudo-real-time predictions using the latest revised historical series",
@@ -273,7 +286,13 @@ plot_national_reference_components <- function(history, all_forecasts, config) {
       linewidth = 0.45
     ) +
     ggplot2::scale_linewidth_manual(values = c(0.65, 0.65, 0.65, 1.1), guide = "none") +
-    ggplot2::scale_y_continuous(labels = function(x) paste0(round(100 * x), "%")) +
+    ggplot2::scale_y_continuous(
+      labels = function(x) paste0(round(100 * x), "%"),
+      limits = nhs_proportion_axis_limits,
+      breaks = nhs_proportion_axis_breaks,
+      oob = scales::oob_keep,
+      expand = ggplot2::expansion(mult = 0)
+    ) +
     ggplot2::coord_cartesian(ylim = c(0.50, 0.90)) +
     ggplot2::labs(
       title = "The reference forecast spans different views of the trajectory",
