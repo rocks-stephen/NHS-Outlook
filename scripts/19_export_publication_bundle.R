@@ -113,11 +113,20 @@ if (publication_mode == "forecast") {
   html_files <- unique(c(
     "output/releases/nhs-performance-outturn-latest.html",
     outturn_detail_html,
-    provider_watch_html,
-    if (file.exists("output/releases/ae-george-eliot-flow-deep-dive-latest.html")) {
-      "output/releases/ae-george-eliot-flow-deep-dive-latest.html"
-    } else character()
+    provider_watch_html
   ))
+}
+
+# The George Eliot exploratory briefing is opt-in, not part of the 8-indicator
+# standard release. Remove only the old generated PDF left by a prior export;
+# do not touch the source HTML or analysis.
+if (publication_mode == "outturn") {
+  obsolete_ge_pdf <- file.path(
+    bundle_dir, paste0("ae-george-eliot-flow-deep-dive-", issue_day, ".pdf")
+  )
+  if (file.exists(obsolete_ge_pdf) && !file.remove(obsolete_ge_pdf)) {
+    stop("Could not remove obsolete optional George Eliot PDF: ", obsolete_ge_pdf)
+  }
 }
 
 manifest_parts <- lapply(html_files, function(html_path) {

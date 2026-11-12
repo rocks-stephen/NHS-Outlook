@@ -2,6 +2,7 @@ source("R/utils.R")
 source("R/national_forecast.R")
 source("R/performance_outlook.R")
 source("R/target_probability.R")
+source("R/outturn_four_columns.R")
 source("R/core_outlook.R")
 source("R/core_import.R")
 source("R/diagnostics.R")
@@ -295,6 +296,36 @@ if (publication_mode == "forecast") {
   outturn_rows <- performance_prepare_published_outturn(
     published_snapshot, history, require_all = TRUE
   )
+
+  # Preserve the frozen pre-release comparison while refreshing ONLY the
+  # target-date outlook and model-implied chance using today's model run.
+  # Do not replace the previous-period actual or pre-release forecast.
+  current_idx <- match(outturn_rows$metric_id, forecast_rows$metric_id)
+  if (anyNA(current_idx)) {
+    stop("Fresh target-date outlook missing for: ",
+         paste(outturn_rows$metric_id[is.na(current_idx)], collapse = ", "))
+  }
+  target_columns <- intersect(
+    c("target_month", "target_value", "target_label",
+      "projected_target_value", "target_probability",
+      "target_probability_method"),
+    intersect(names(forecast_rows), names(outturn_rows))
+  )
+  needed <- c("target_month", "target_value", "projected_target_value",
+              "target_probability")
+  if (!all(needed %in% target_columns)) {
+    stop("Cannot refresh target-date outlook: missing columns ",
+         paste(setdiff(needed, target_columns), collapse = ", "))
+  }
+  for (column in target_columns) {
+    data.table::set(outturn_rows, j = paste0("at_forecast_", column),
+                    value = outturn_rows[[column]])
+    data.table::set(outturn_rows, j = column,
+                    value = forecast_rows[[column]][current_idx])
+  }
+  # Keep audit values so a future edition can distinguish the two vintages.
+  data.table::set(outturn_rows, j = "outlook_refreshed_at_issue",
+                  value = rep(issue_day, nrow(outturn_rows)))
   provider_count_columns <- c(
     "providers_assessed", "providers_favourable", "providers_adverse",
     "providers_no_signal"
@@ -420,6 +451,13 @@ if (publication_mode == "forecast") {
     ),
     publication_issue_date = publication_issue_date,
     publication_status = publication_status
+  )
+  # Replace only the overall metric grid with the four-column outturn layout.
+  # Existing detail-page rendering and links remain unchanged.
+  nhs_outturn_four_columns(
+    path = outturn_path,
+    outturn_rows = outturn_rows,
+    issue_date = publication_issue_date
   )
   file.copy(
     outturn_path,

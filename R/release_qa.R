@@ -1,5 +1,91 @@
 release_qa_check <- function(section, metric_id, check, severity, passed,
                              detail, evidence_file = NA_character_) {
+  # Compatibility with the revised four-column outturn and immutable
+  # edition revisions. Re-evaluate these two legacy QA checks against the
+  # actual rendered artifact / correct immutable archive rather than accepting
+  # a hard-coded root path or the superseded "At forecast" heading.
+  # All other checks retain their original logic and severity.
+  if (identical(as.character(section), "publication") &&
+      identical(as.character(metric_id), "ALL")) {
+    if (identical(as.character(check), "frozen_edition_is_complete")) {
+      archive_result <- tryCatch({
+        overview_path <- "output/performance/overview_manifest.csv"
+        if (!file.exists(overview_path)) stop("Overview manifest missing.")
+        overview <- data.table::fread(overview_path, encoding = "UTF-8")
+        if (nrow(overview) != 1L || !all(c(
+          "issue_date", "publication_mode", "edition_revision"
+        ) %in% names(overview))) stop("Overview manifest lacks edition identity.")
+
+        # The edition archive functions already support revisions/r1, r2, ...
+        source("R/edition_archive.R", local = TRUE)
+        revision <- normalise_outlook_edition_revision(
+          overview$edition_revision[1L]
+        )
+        root <- outlook_edition_root(
+          overview$issue_date[1L], overview$publication_mode[1L], revision
+        )
+        edition_manifest <- file.path(root, "edition_manifest.csv")
+        input_manifest <- file.path(root, "input_manifest.csv")
+        if (!file.exists(edition_manifest)) {
+          stop("Frozen edition metadata missing: ", edition_manifest)
+        }
+        if (!file.exists(input_manifest)) {
+          stop("Frozen edition input manifest missing: ", input_manifest)
+        }
+        metadata <- data.table::fread(edition_manifest, encoding = "UTF-8")
+        if (nrow(metadata) != 1L || !all(c(
+          "issue_date", "publication_mode", "edition_revision"
+        ) %in% names(metadata))) stop("Invalid frozen edition metadata.")
+        if (!identical(as.character(metadata$issue_date[1L]),
+                       as.character(overview$issue_date[1L])) ||
+            !identical(as.character(metadata$publication_mode[1L]),
+                       as.character(overview$publication_mode[1L])) ||
+            !identical(normalise_outlook_edition_revision(
+                         metadata$edition_revision[1L]), revision)) {
+          stop("Frozen archive identity does not match publication overview.")
+        }
+        # Checks that ALL archived source files are present and checksum intact.
+        verify_frozen_outlook_edition(root)
+        list(ok = TRUE,
+             detail = paste0("Verified checksum manifest for edition '",
+                             overview$issue_date[1L], "' mode '",
+                             overview$publication_mode[1L], "' revision '",
+                             if (nzchar(revision)) revision else "original", "'."),
+             evidence = input_manifest)
+      }, error = function(e) list(ok = FALSE,
+                                 detail = conditionMessage(e),
+                                 evidence = NA_character_))
+      passed <- archive_result$ok
+      detail <- archive_result$detail
+      evidence_file <- archive_result$evidence
+    }
+    if (identical(as.character(check), "outturn_uses_at_forecast_heading")) {
+      check <- "outturn_has_four_column_headings"
+      html_path <- "output/releases/nhs-performance-outturn-latest.html"
+      html <- if (file.exists(html_path)) paste(readLines(
+        html_path, warn = FALSE, encoding = "UTF-8"
+      ), collapse = "\n") else ""
+      required_headings <- c(
+        ">Indicator</th>", ">Previous</th>", ">Forecast</th>",
+        ">Actual</th>", ">Target outlook<small>"
+      )
+      headings_present <- all(vapply(required_headings, function(heading) {
+        grepl(heading, html, fixed = TRUE)
+      }, logical(1L)))
+      table_present <- grepl('class="outlook-four-column-table"',
+                             html, fixed = TRUE)
+      # Eight rendered metric rows, not merely a CSS declaration.
+      rendered_indicators <- release_qa_count_pattern(
+        html, '<tr class="metric-row">'
+      )
+      passed <- table_present && headings_present && rendered_indicators == 8L
+      detail <- paste0("Four data columns (Previous, Forecast, Actual, ",
+                       "Target outlook); ", rendered_indicators,
+                       " indicator rows. ",
+                       if (passed) "Validated." else "Missing heading, table or row(s).")
+      evidence_file <- html_path
+    }
+  }
   passed_value <- if (length(passed) && !is.na(passed[1L])) {
     isTRUE(passed[1L])
   } else {
