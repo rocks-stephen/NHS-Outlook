@@ -2,6 +2,9 @@ source("R/utils.R")
 source("R/national_forecast.R")
 source("R/performance_outlook.R")
 source("R/target_probability.R")
+source("R/ambulance_official.R")
+source("R/ambulance_report_display.R")
+source("R/ambulance_annual_target.R")
 source("R/outturn_four_columns.R")
 source("R/core_outlook.R")
 source("R/core_import.R")
@@ -170,6 +173,10 @@ rows <- merge(
 )
 data.table::setorder(rows, display_order)
 rows <- nhs_augment_target_probabilities(rows)
+# Category 2 target is the incident-weighted FY 2026/27 mean, not March only.
+cat2_annual <- nhs_cat2_load_annual_series()
+nhs_cat2_save_annual(cat2_annual)
+rows <- nhs_cat2_apply_annual_to_rows(rows, cat2_annual)
 validate_performance_outlook_rows(rows)
 
 ae_history <- read_performance_csv(
@@ -588,6 +595,9 @@ if (publication_mode %in% c("forecast", "outturn")) {
         metric_id == metric, signal_materiality_native
       ][1L]
     )
+    if (metric == "ambulance_cat2") {
+      nhs_cat2_overlay_annual_chart(output_path, cat2_annual)
+    }
     file.copy(
       output_path,
       file.path(
@@ -745,6 +755,32 @@ data.table::fwrite(
   outturn_provider_watch_manifest,
   file.path(output_data_dir, "outturn_provider_watch_manifest.csv")
 )
+
+if (publication_mode == "outturn") {
+  cat2 <- outturn_rows[metric_id == "ambulance_cat2"]
+  if (nrow(cat2) != 1L) stop("Expected one Category 2 row in the outturn.")
+  official <- nhs_cat2_read_control()
+  actual_month <- data.table::as.IDate(cat2$actual_month[1L])
+  official <- official[calendar_month == actual_month]
+  if (nrow(official) != 1L) {
+    stop("No approved AmbSYS national source for Category 2 outturn month: ",
+         actual_month)
+  }
+  observed <- cat2$actual_value[1L]
+  if (abs(observed * 60 - official$published_seconds[1L]) > 0.6) {
+    stop("Cat2 outturn does not match the published AmbSYS mean after rounding: ",
+         observed, " min vs ", official$published_seconds[1L], " sec")
+  }
+  detail_paths <- c(
+    file.path(output_release_dir, "ambulance-category-2-outturn-latest.html"),
+    file.path(output_release_dir, paste0("ambulance-category-2-outturn-",
+                                         issue_day, revision_suffix, ".html"))
+  )
+  for (path in unique(detail_paths)) {
+    nhs_ambsys_format_detail_outturn(path, official$published_minutes[1L])
+  }
+}
+
 
 data.table::fwrite(data.table::data.table(
   issue_date = issue_day,

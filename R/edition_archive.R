@@ -35,6 +35,34 @@ edition_archive_input_files <- function(project_root = getwd()) {
     "data-interim/core/downloaded_source_manifest.csv",
     "output/performance/latest_published_forecast_rows.csv"
   )
+  # Include the optional but material official Category 2 historical source
+  # and reconciliation used to reconstruct annual-average forecasts and chart.
+  cat2_support <- c(
+    "output/qa/ambulance_cat2_official_history.csv",
+    "output/qa/ambulance_cat2_long_history_audit.csv"
+  )
+  fixed <- c(fixed, cat2_support[file.exists(file.path(project_root, cat2_support))])
+  # Freeze the exact official CSV used for the history where it is inside the
+  # project root. Never silently claim reproducibility from only an HTML page.
+  audit_file <- file.path(project_root, "output/qa/ambulance_cat2_long_history_audit.csv")
+  selected_source <- character()
+  if (file.exists(audit_file)) {
+    a <- data.table::fread(audit_file, encoding = "UTF-8")
+    if ("source_csv" %in% names(a) && nrow(a)) {
+      src <- unique(as.character(a$source_csv))
+      src <- src[!is.na(src) & nzchar(src) & file.exists(src)]
+      if (length(src) != 1L) {
+        stop("Category 2 history source audit lacks one available official CSV.")
+      }
+      src <- normalizePath(src, winslash = "/", mustWork = TRUE)
+      root <- normalizePath(project_root, winslash = "/", mustWork = TRUE)
+      if (!startsWith(src, paste0(root, "/"))) {
+        stop("Official AmbSYS source is outside the R project. Copy it into ",
+             "data-external/official before freezing this revision: ", src)
+      }
+      selected_source <- src
+    }
+  }
   trees <- c("output/national", "output/provider", "output/core")
   tree_files <- unlist(lapply(file.path(project_root, trees), function(path) {
     if (!dir.exists(path)) return(character())
@@ -48,7 +76,7 @@ edition_archive_input_files <- function(project_root = getwd()) {
     stop("Cannot freeze edition; missing inputs: ",
          paste(missing_required, collapse = ", "), ".")
   }
-  unique(c(fixed_paths[file.exists(fixed_paths)], tree_files))
+  unique(c(fixed_paths[file.exists(fixed_paths)], tree_files, selected_source))
 }
 
 normalise_outlook_edition_revision <- function(revision = "") {

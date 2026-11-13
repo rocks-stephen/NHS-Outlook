@@ -1,0 +1,9 @@
+metric_id,calendar_month,official_value,official_unit,verification_status,source_or_check
+ae4h_all,2026-10-01,0.740,proportion,verified,https://www.aol.co.uk/articles/latest-nhs-hospital-figures-england-121729000.html
+ambulance_cat2,2026-10-01,1965,seconds,verified,AmbSYS-2026-October-8237G.xlsx Response Times H35
+rtt_18w,2026-09-01,0.658,proportion,verified,https://www.aol.co.uk/articles/latest-nhs-hospital-figures-england-121729000.html
+cancer_62d,2026-09-01,0.707,proportion,verified,https://www.aol.co.uk/articles/latest-nhs-hospital-figures-england-121729000.html
+diagnostics_6w,2026-09-01,0.226,proportion,needs_independent_check,NHS England DM01 national England headline September 2026
+ucr_2h,2026-09-01,0.854,proportion,needs_independent_check,NHS England two-hour UCR national England primary September 2026
+community_18w,2026-09-01,0.761,proportion,needs_independent_check,NHS England community health waiting lists national England September 2026
+talking_therapies_6w,2026-09-01,0.842,proportion,needs_independent_check,NHS Talking Therapies England six-week access among completed treatment September 2026

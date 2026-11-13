@@ -1,0 +1,39 @@
+warning: in the working copy of 'R/core_outlook.R', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'R/diagnostics.R', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'R/edition_archive.R', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'R/monthly_outlook.R', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'R/national_plots.R', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'R/performance_outlook.R', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'R/provider_plots.R', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'R/utils.R', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'ambulance-category-2-outlook-latest.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'publication_site/ambulance-category-2-outlook-latest.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'reports/ae_four_hour_outlook_template.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'reports/core_metric_outlook_template.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'reports/nhs_performance_outlook_template.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/11_build_monthly_outlook.R', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/17_build_performance_outlook.R', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/20_release_qa.R', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/21_build_ae_flow_deep_dive.R', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/24_render_frozen_edition.R', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/26_analyse_george_eliot_change.R', LF will be replaced by CRLF the next time Git touches it
+ R/core_outlook.R                                   | 175 [32m+++++++++++++++++[m[31m----[m
+ R/diagnostics.R                                    |  75 [32m++++++++[m[31m-[m
+ R/edition_archive.R                                |   1 [32m+[m
+ R/monthly_outlook.R                                |  41 [32m++++[m[31m-[m
+ R/national_plots.R                                 |  27 [32m+++[m[31m-[m
+ R/performance_outlook.R                            |  62 [32m+++++++[m[31m-[m
+ R/provider_plots.R                                 |  24 [32m++[m[31m-[m
+ R/utils.R                                          |  30 [32m++++[m
+ ambulance-category-2-outlook-latest.html           |   2 [32m+[m[31m-[m
+ .../ambulance-category-2-outlook-latest.html       |   2 [32m+[m[31m-[m
+ reports/ae_four_hour_outlook_template.html         |  24 [32m++[m[31m-[m
+ reports/core_metric_outlook_template.html          |  36 [32m++++[m[31m-[m
+ reports/nhs_performance_outlook_template.html      |  24 [32m++[m[31m-[m
+ scripts/11_build_monthly_outlook.R                 |   1 [32m+[m
+ scripts/17_build_performance_outlook.R             |  19 [32m+++[m
+ scripts/20_release_qa.R                            |  40 [32m++++[m[31m-[m
+ scripts/21_build_ae_flow_deep_dive.R               |  11 [32m++[m
+ scripts/24_render_frozen_edition.R                 |  62 [32m+++++++[m[31m-[m
+ scripts/26_analyse_george_eliot_change.R           |  11 [32m++[m
+ 19 files changed, 600 insertions(+), 67 deletions(-)

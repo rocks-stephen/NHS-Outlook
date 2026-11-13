@@ -1,0 +1,83 @@
+ R/ambulance_annual_target.R                        | 266 [32m+++++++++++[m
+ R/ambulance_cat2_history_chart.R                   | 485 [32m+++++++++++++++++++++[m
+ R/ambulance_counts_backfill.R                      | 327 [32m++++++++++++++[m
+ R/ambulance_official.R                             |  91 [32m++++[m
+ R/ambulance_report_display.R                       |  21 [32m+[m
+ R/edition_archive.R                                |  30 [32m+[m[31m-[m
+ R/outturn_four_columns.R                           |  46 [32m+[m[31m-[m
+ ae-four-hour-provider-watch-outturn-latest.html    |   2 [32m+[m[31m-[m
+ ambulance-category-2-outturn-latest.html           |  24 [32m+[m[31m-[m
+ ...e-category-2-provider-watch-outturn-latest.html |   4 [32m+[m[31m-[m
+ cancer-62-day-outturn-latest.html                  |   6 [32m+[m[31m-[m
+ cancer-62-day-provider-watch-outturn-latest.html   |   2 [32m+[m[31m-[m
+ community-18-week-outturn-latest.html              |   6 [32m+[m[31m-[m
+ ...nity-18-week-provider-watch-outturn-latest.html |   2 [32m+[m[31m-[m
+ diagnostics-six-week-outturn-latest.html           |   6 [32m+[m[31m-[m
+ ...ics-six-week-provider-watch-outturn-latest.html |   2 [32m+[m[31m-[m
+ .../2026-11-12/ae-four-hour-outturn-2026-11-12.pdf | Bin [31m262933[m -> [32m262933[m bytes
+ ...four-hour-provider-watch-outturn-2026-11-12.pdf | Bin [31m219263[m -> [32m219263[m bytes
+ .../ambulance-category-2-outturn-2026-11-12.pdf    | Bin [31m171752[m -> [32m219853[m bytes
+ ...ategory-2-provider-watch-outturn-2026-11-12.pdf | Bin [31m130677[m -> [32m130696[m bytes
+ .../cancer-62-day-outturn-2026-11-12.pdf           | Bin [31m266868[m -> [32m266870[m bytes
+ ...er-62-day-provider-watch-outturn-2026-11-12.pdf | Bin [31m229228[m -> [32m229228[m bytes
+ .../community-18-week-outturn-2026-11-12.pdf       | Bin [31m274826[m -> [32m274832[m bytes
+ ...y-18-week-provider-watch-outturn-2026-11-12.pdf | Bin [31m206632[m -> [32m206632[m bytes
+ .../diagnostics-six-week-outturn-2026-11-12.pdf    | Bin [31m253221[m -> [32m253224[m bytes
+ ...-six-week-provider-watch-outturn-2026-11-12.pdf | Bin [31m214875[m -> [32m214875[m bytes
+ .../nhs-performance-outturn-2026-11-12.pdf         | Bin [31m206166[m -> [32m213968[m bytes
+ .../2026-11-12/rtt-18-week-outturn-2026-11-12.pdf  | Bin [31m263923[m -> [32m263926[m bytes
+ ...t-18-week-provider-watch-outturn-2026-11-12.pdf | Bin [31m227349[m -> [32m227349[m bytes
+ ...lking-therapies-six-week-outturn-2026-11-12.pdf | Bin [31m121623[m -> [32m121624[m bytes
+ ...rgent-community-response-outturn-2026-11-12.pdf | Bin [31m247608[m -> [32m247610[m bytes
+ ...-response-provider-watch-outturn-2026-11-12.pdf | Bin [31m211764[m -> [32m211765[m bytes
+ index.html                                         |   6 [32m+[m[31m-[m
+ nhs-performance-outturn-latest.html                |   6 [32m+[m[31m-[m
+ ...ae-four-hour-provider-watch-outturn-latest.html |   2 [32m+[m[31m-[m
+ .../ambulance-category-2-outturn-latest.html       |  24 [32m+[m[31m-[m
+ ...e-category-2-provider-watch-outturn-latest.html |   4 [32m+[m[31m-[m
+ publication_site/cancer-62-day-outturn-latest.html |   6 [32m+[m[31m-[m
+ ...ancer-62-day-provider-watch-outturn-latest.html |   2 [32m+[m[31m-[m
+ .../community-18-week-outturn-latest.html          |   6 [32m+[m[31m-[m
+ ...nity-18-week-provider-watch-outturn-latest.html |   2 [32m+[m[31m-[m
+ .../diagnostics-six-week-outturn-latest.html       |   6 [32m+[m[31m-[m
+ ...ics-six-week-provider-watch-outturn-latest.html |   2 [32m+[m[31m-[m
+ .../2026-11-12/ae-four-hour-outturn-2026-11-12.pdf | Bin [31m262933[m -> [32m262933[m bytes
+ ...four-hour-provider-watch-outturn-2026-11-12.pdf | Bin [31m219263[m -> [32m219263[m bytes
+ .../ambulance-category-2-outturn-2026-11-12.pdf    | Bin [31m171752[m -> [32m219853[m bytes
+ ...ategory-2-provider-watch-outturn-2026-11-12.pdf | Bin [31m130677[m -> [32m130696[m bytes
+ .../cancer-62-day-outturn-2026-11-12.pdf           | Bin [31m266868[m -> [32m266870[m bytes
+ ...er-62-day-provider-watch-outturn-2026-11-12.pdf | Bin [31m229228[m -> [32m229228[m bytes
+ .../community-18-week-outturn-2026-11-12.pdf       | Bin [31m274826[m -> [32m274832[m bytes
+ ...y-18-week-provider-watch-outturn-2026-11-12.pdf | Bin [31m206632[m -> [32m206632[m bytes
+ .../diagnostics-six-week-outturn-2026-11-12.pdf    | Bin [31m253221[m -> [32m253224[m bytes
+ ...-six-week-provider-watch-outturn-2026-11-12.pdf | Bin [31m214875[m -> [32m214875[m bytes
+ .../nhs-performance-outturn-2026-11-12.pdf         | Bin [31m206166[m -> [32m213968[m bytes
+ .../2026-11-12/rtt-18-week-outturn-2026-11-12.pdf  | Bin [31m263923[m -> [32m263926[m bytes
+ ...t-18-week-provider-watch-outturn-2026-11-12.pdf | Bin [31m227349[m -> [32m227349[m bytes
+ ...lking-therapies-six-week-outturn-2026-11-12.pdf | Bin [31m121623[m -> [32m121624[m bytes
+ ...rgent-community-response-outturn-2026-11-12.pdf | Bin [31m247608[m -> [32m247610[m bytes
+ ...-response-provider-watch-outturn-2026-11-12.pdf | Bin [31m211764[m -> [32m211765[m bytes
+ publication_site/index.html                        |   6 [32m+[m[31m-[m
+ .../nhs-performance-outturn-latest.html            |   6 [32m+[m[31m-[m
+ publication_site/rtt-18-week-outturn-latest.html   |   6 [32m+[m[31m-[m
+ .../rtt-18-week-provider-watch-outturn-latest.html |   2 [32m+[m[31m-[m
+ .../talking-therapies-six-week-outturn-latest.html |   6 [32m+[m[31m-[m
+ .../urgent-community-response-outturn-latest.html  |   6 [32m+[m[31m-[m
+ ...ity-response-provider-watch-outturn-latest.html |   2 [32m+[m[31m-[m
+ rtt-18-week-outturn-latest.html                    |   6 [32m+[m[31m-[m
+ rtt-18-week-provider-watch-outturn-latest.html     |   2 [32m+[m[31m-[m
+ scripts/14a_align_ambulance_official.R             |  42 [32m++[m
+ scripts/17_build_performance_outlook.R             |  36 [32m++[m
+ scripts/29_audit_official_headlines.R              |  87 [32m++++[m
+ scripts/30_rebuild_audited_outturn.R               |  19 [32m+[m
+ scripts/31_verify_cat2_annual_target.R             |  28 [32m++[m
+ scripts/32_rebuild_cat2_annual_outturn.R           |  14 [32m+[m
+ scripts/32a_inspect_cat2_incident_counts.R         |  22 [32m+[m
+ scripts/33_backfill_cat2_official_counts.R         |   9 [32m+[m
+ scripts/34_rebuild_cat2_after_backfill.R           |  10 [32m+[m
+ scripts/35_extend_cat2_history_and_redesign.R      |  90 [32m++++[m
+ scripts/36_clarify_cat2_pdf_chart.R                | 106 [32m+++++[m
+ talking-therapies-six-week-outturn-latest.html     |   6 [32m+[m[31m-[m
+ urgent-community-response-outturn-latest.html      |   6 [32m+[m[31m-[m
+ ...ity-response-provider-watch-outturn-latest.html |   2 [32m+[m[31m-[m
+ 82 files changed, 1802 insertions(+), 103 deletions(-)

@@ -1,0 +1,12 @@
+source("R/target_probability.R")
+check <- function(x, y, tolerance = 1e-10) stopifnot(isTRUE(all.equal(x, y, tolerance = tolerance)))
+check(nhs_target_probability(.7, .6, .8, .7, TRUE), .5)
+check(nhs_target_probability(.7, .6, .8, .7, FALSE), .5)
+stopifnot(nhs_target_probability(.7, .6, .8, .8, TRUE) < .5)
+stopifnot(nhs_target_probability(.7, .6, .8, .8, FALSE) > .5)
+stopifnot(nhs_target_probability(.75, .7, .8, .80, TRUE) <
+          nhs_target_probability(.78, .73, .83, .80, TRUE))
+stopifnot(is.na(nhs_target_probability(.7, .7, .7, .8, TRUE)))
+stopifnot(nhs_format_target_probability(1e-8) == "<1%")
+stopifnot(nhs_format_target_probability(1 - 1e-8) == ">99%")
+message("Target-probability tests passed.")

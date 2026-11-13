@@ -45,10 +45,15 @@ nhs_outturn_four_columns <- function(path, outturn_rows, issue_date) {
     format(d, "%d %b %Y")
   }
   is_minutes <- function(metric) identical(metric, "ambulance_cat2")
-  as_display <- function(x, metric) {
+  as_display <- function(x, metric, observed = FALSE) {
     z <- num(x)
     if (!is.finite(z)) return("—")
-    if (is_minutes(metric)) return(sprintf("%.1f min", z))
+    if (is_minutes(metric)) {
+      # NHS England publishes observed response times as whole seconds.
+      # Keep model estimates in decimal minutes to avoid spurious precision.
+      if (observed) return(nhs_cat2_clock(z))
+      return(sprintf("%.1f min", z))
+    }
     if (abs(z) <= 1) z <- z * 100
     sprintf("%.1f%%", z)
   }
@@ -60,9 +65,12 @@ nhs_outturn_four_columns <- function(path, outturn_rows, issue_date) {
     if (!is_minutes(metric) && max(abs(a), abs(b)) <= 1) d <- 100 * d
     d
   }
-  delta_text <- function(d, metric) {
+  delta_text <- function(d, metric, observed_change = FALSE) {
     if (!is.finite(d)) return("—")
-    if (is_minutes(metric)) return(sprintf("%.1f min", abs(d)))
+    if (is_minutes(metric)) {
+      if (observed_change) return(nhs_cat2_clock(abs(d)))
+      return(sprintf("%.1f min", abs(d)))
+    }
     sprintf("%.1f pp", abs(d))
   }
   chance_html <- function(x) {
@@ -125,10 +133,10 @@ nhs_outturn_four_columns <- function(path, outturn_rows, issue_date) {
       '<span class="signal-muted">Broadly unchanged</span>'
     } else if (direction * movement > 0) {
       paste0('<span class="signal-good">Improved ',
-             escape(delta_text(movement, metric)), '</span>')
+             escape(delta_text(movement, metric, observed_change = TRUE)), '</span>')
     } else {
       paste0('<span class="signal-bad">Worsened ',
-             escape(delta_text(movement, metric)), '</span>')
+             escape(delta_text(movement, metric, observed_change = TRUE)), '</span>')
     }
     comparison <- if (!is.finite(error)) {
       '<span class="signal-muted">Forecast comparison unavailable</span>'
@@ -176,7 +184,7 @@ nhs_outturn_four_columns <- function(path, outturn_rows, issue_date) {
     paste0(
       '<tr class="metric-row">',
       '<th scope="row" class="indicator-cell">', link, benchmark, '</th>',
-      '<td class="previous-cell"><strong>', escape(as_display(previous, metric)),
+      '<td class="previous-cell"><strong>', escape(as_display(previous, metric, observed = TRUE)),
       '</strong><small>', escape(previous_month), '</small></td>',
       '<td class="forecast-cell"><strong>', escape(as_display(forecast, metric)),
       '</strong><small>', escape(forecast_month), '</small>',
@@ -184,20 +192,27 @@ nhs_outturn_four_columns <- function(path, outturn_rows, issue_date) {
       escape(as_display(lower, metric)), '–',
       escape(as_display(upper, metric)), '</span></td>',
       '<td class="actual-cell ', actual_class, '"><strong>',
-      escape(as_display(actual, metric)), '</strong><small>',
+      escape(as_display(actual, metric, observed = TRUE)), '</strong><small>',
       escape(actual_month), '</small><span class="actual-signal">',
       change, '</span><span class="actual-signal">', comparison,
       '</span>', range_signal, '</td>',
       '<td class="target-cell"><span class="target-date">',
-      escape(short_month(r$target_month)), '</span>',
+      escape(if (metric == 'ambulance_cat2') 'FY 2026/27' else short_month(r$target_month)), '</span>',
       '<span class="target-numbers"><strong>',
       escape(as_display(r$projected_target_value, metric)),
-      '</strong><span>Goal ', condition, escape(as_display(r$target_value, metric)),
+      '</strong><span>', if (metric == 'ambulance_cat2') 'FY average goal ' else 'Goal ', condition, escape(as_display(r$target_value, metric)),
       '</span></span><span class="target-chance ',
       chance_class(r$target_probability), '"><b>',
-      chance_html(r$target_probability), '</b> chance of meeting goal</span>',
-      probability_change_html(r$target_probability,
-                              r$at_forecast_target_probability),
+      chance_html(r$target_probability), '</b> ',
+      if (metric == "ambulance_cat2") {
+        'chance 2026/27 average meets goal (provisional)'
+      } else {
+        'chance of meeting goal'
+      }, '</span>',
+      if (metric == "ambulance_cat2") {
+        '<span class="probability-change probability-stable">New annual-average basis; no comparable pre-release probability</span>'
+      } else probability_change_html(r$target_probability,
+                                    r$at_forecast_target_probability),
       '</td></tr>'
     )
   }
@@ -311,7 +326,10 @@ nhs_outturn_four_columns <- function(path, outturn_rows, issue_date) {
     '<p class="outlook-grid-note"><b>Forecast</b> is the estimate published before the release. ',
     '<b>Target outlook</b> is updated with the new results; its chance change ',
     'is against the pre-release forecast. ',
-    'Green/red indicates whether actual performance was better/worse than forecast.</p>'
+    'Green/red indicates whether actual performance was better/worse than forecast. ',
+    'Observed ambulance response times are rounded to the nearest second, as in AmbSYS. ',
+    'For Cat2, the 25-minute policy objective is a financial-year average; ',
+    'the model probability is now for the incident-weighted FY average and is provisional.</p>'
   )
   html <- sub('<table class="outlook-four-column-table"',
               paste0(note, '\n<table class="outlook-four-column-table"'),
